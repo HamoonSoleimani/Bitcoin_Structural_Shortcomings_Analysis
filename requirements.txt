@@ -1,0 +1,11 @@
+# requirements.txt
+# Dependencies required for running the quantitative analysis script.
+# Use: pip install -r requirements.txt
+
+pandas>=2.0.0
+numpy>=1.24.0
+yfinance>=0.2.36
+matplotlib>=3.7.0
+arch>=5.0.0
+seaborn>=0.12.0
+mplcyberpunk>=0.7.0
