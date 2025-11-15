@@ -7,9 +7,9 @@
 # Date:       November 13, 2025 (Date of final analysis)
 #
 # Description: This script reproduces the core quantitative analyses
-#              for Figures 2, 3, 4, 5, 11, and 12, ensuring full
+#              for Figures 2, 3, 4, 6, 17, and 18, ensuring full
 #              reproducibility via a static data file.
-# Version:    3.0 (Corrected and Robust)
+# Version:    4.2 (Final - Corrected plotting loop bug)
 # ==============================================================================
 
 import pandas as pd
@@ -20,12 +20,27 @@ from arch import arch_model
 import datetime
 import os
 import warnings
-import mplcyberpunk
 
 # --- 1. GLOBAL CONFIGURATION & STATIC PARAMETERS ---
 
-# Define global style for most plots
-plt.style.use('seaborn-v0_8-whitegrid')
+# --- PLOT STYLE CONFIGURATION ---
+# A custom, readable dark theme for all plots.
+plt.style.use('dark_background')
+plt.rcParams.update({
+    "grid.color": "#555555",
+    "grid.linestyle": "--",
+    "grid.linewidth": 0.5,
+    "axes.facecolor": "black",
+    "axes.edgecolor": "white",
+    "axes.labelcolor": "white",
+    "text.color": "white",
+    "xtick.color": "white",
+    "ytick.color": "white",
+    "legend.facecolor": "#1c1c1c",
+    "legend.edgecolor": "white",
+    "figure.facecolor": "black",
+    "figure.edgecolor": "black",
+})
 warnings.filterwarnings("ignore", category=UserWarning) # Suppress minor plot warnings
 
 # --- HARDCODED DATES (CRITICAL FOR REPRODUCIBILITY) ---
@@ -52,9 +67,8 @@ def get_data(start_date, end_date, cache_filename):
     Loads historical price data. Prioritizes static CSV for reproducibility.
     If CSV is missing, it fetches all required data in a single API call.
     """
-    # Combine all necessary tickers into one list for a single download
     all_tickers_needed = list(TICKERS.values()) + list(ASSETS_FOR_VOL_COMP.keys())
-    all_tickers_needed = sorted(list(set(all_tickers_needed))) # Remove duplicates
+    all_tickers_needed = sorted(list(set(all_tickers_needed)))
 
     if os.path.exists(cache_filename):
         print(f"Loading data from static file: {cache_filename}...")
@@ -80,27 +94,26 @@ def get_data(start_date, end_date, cache_filename):
         raise ConnectionError(f"Failed to fetch data from yfinance: {e}")
 
 
-# --- 3. ANALYSIS AND VISUALIZATION FUNCTIONS (UNCHANGED) ---
+# --- 3. ANALYSIS AND VISUALIZATION FUNCTIONS ---
 
 def generate_volatility_comparison_chart(df_raw):
     """
     Reproduces Figure 2: Comparative Rolling Volatility (BTC, Gold, Apple).
     """
-    plt.style.use("cyberpunk")
     ROLLING_WINDOWS = [15, 200]
     df = df_raw.rename(columns=ASSETS_FOR_VOL_COMP).dropna()
     
-    # Calculate returns and rolling volatility
     for col in ASSETS_FOR_VOL_COMP.values():
         df[f'{col} Returns'] = df[col].pct_change()
         for window in ROLLING_WINDOWS:
-            df[f'{col} Volatility {window}d'] = df[f'{col} Returns'].rolling(window).std() * np.sqrt(252) # Annualized
+            df[f'{col} Volatility {window}d'] = df[f'{col} Returns'].rolling(window).std() * np.sqrt(252)
 
     fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(14, 10), sharex=True)
-    colors = {'Apple': 'c', 'Bitcoin': 'm', 'Gold': 'y'}
+    colors = {'Apple': '#3498db', 'Bitcoin': '#f1c40f', 'Gold': '#e74c3c'}
     
     ax1 = axes[0]
     for asset_name in ASSETS_FOR_VOL_COMP.values():
+        # *** BUG FIX HERE: Use `asset_name` instead of `col` ***
         df[f'{asset_name} Volatility 15d'].plot(ax=ax1, color=colors[asset_name], lw=2, label=asset_name)
     ax1.set_ylabel("15-Day Annualized Volatility")
     ax1.set_title("Short-Term Volatility Comparison (Annualized)")
@@ -108,6 +121,7 @@ def generate_volatility_comparison_chart(df_raw):
     
     ax2 = axes[1]
     for asset_name in ASSETS_FOR_VOL_COMP.values():
+        # *** BUG FIX HERE: Use `asset_name` instead of `col` ***
         df[f'{asset_name} Volatility 200d'].plot(ax=ax2, color=colors[asset_name], lw=2, label=asset_name)
     ax2.set_ylabel("200-Day Annualized Volatility")
     ax2.set_title("Long-Term Volatility Comparison (Annualized)")
@@ -116,7 +130,6 @@ def generate_volatility_comparison_chart(df_raw):
     plt.tight_layout(rect=[0, 0.03, 1, 0.96])
     plt.savefig('figure_2_rolling_volatility.png', dpi=300)
     plt.show()
-    plt.style.use('seaborn-v0_8-whitegrid') # Revert style
 
 
 def analyze_risk_and_garch(data):
@@ -125,25 +138,24 @@ def analyze_risk_and_garch(data):
     """
     log_returns = np.log(data / data.shift(1)).dropna()
     
-    # --- Value-at-Risk (VaR) Analysis for Figure 3 ---
     var_results = [{'Asset': name, 'VaR_95': log_returns[ticker].quantile(0.05) * 100}
                    for name, ticker in TICKERS.items() if ticker in log_returns.columns]
     var_df = pd.DataFrame(var_results).sort_values('VaR_95', ascending=True)
     
     fig_var, ax_var = plt.subplots(figsize=(10, 6))
-    bars = ax_var.bar(var_df['Asset'], var_df['VaR_95'], color=['#e74c3c', '#c0392b', '#95a5a6', '#7f8c8d'])
+    bar_colors = ['#e74c3c', '#f39c12', '#3498db', '#2ecc71']
+    bars = ax_var.bar(var_df['Asset'], var_df['VaR_95'], color=bar_colors)
     ax_var.set_title('1-Day 95% Value-at-Risk (VaR) Comparison (Figure 3)', fontsize=16)
     ax_var.set_ylabel('Potential 1-Day Loss (%)')
     
     for bar in bars:
         yval = bar.get_height()
-        ax_var.text(bar.get_x() + bar.get_width() / 2.0, yval + 0.1, f'{yval:.2f}%', ha='center', va='bottom', weight='bold')
+        ax_var.text(bar.get_x() + bar.get_width() / 2.0, yval + 0.1, f'{yval:.2f}%', ha='center', va='bottom', weight='bold', color='white')
     
     plt.tight_layout()
     plt.savefig('figure_3_value_at_risk.png', dpi=300)
     plt.show()
 
-    # --- GARCH Modeling for Figure 4 ---
     btc_returns = log_returns[TICKERS['Bitcoin']].dropna() * 100
     model = arch_model(btc_returns, vol='Garch', p=1, q=1, dist='t')
     results = model.fit(disp='off')
@@ -158,7 +170,7 @@ def analyze_risk_and_garch(data):
 
     fig_garch, ax_garch = plt.subplots(figsize=(12, 6))
     ax_garch.plot(btc_returns.index, btc_returns, color='grey', alpha=0.6, label='Daily Returns (%)')
-    ax_garch.plot(results.conditional_volatility.index, results.conditional_volatility, color='red', label='GARCH Conditional Volatility')
+    ax_garch.plot(results.conditional_volatility.index, results.conditional_volatility, color='#e74c3c', label='GARCH Conditional Volatility')
     ax_garch.set_title('Bitcoin Daily Returns and GARCH(1,1) Conditional Volatility (Figure 4)', fontsize=16)
     ax_garch.set_ylabel('Percentage (%)')
     ax_garch.legend()
@@ -169,7 +181,7 @@ def analyze_risk_and_garch(data):
 
 def generate_tps_chart():
     """
-    Reproduces Figure 5: Transaction Per Second (TPS) Capacity Comparison.
+    Reproduces Figure 6: Transaction Per Second (TPS) Capacity Comparison.
     """
     btc_tps = 6.0
     mastercard_transactions_2024 = 159.4e9
@@ -181,56 +193,54 @@ def generate_tps_chart():
     
     systems = ['Bitcoin\n(Realized Avg)', 'Mastercard\n(Switched)', 'Visa\n(Total Payments)']
     tps_values = [btc_tps, mastercard_tps, visa_tps]
-    colors = ['#f2a900', '#eb001b', '#1a1f71']
+    colors = ['#f2a900', '#eb001b', '#3498db']
     
     fig, ax = plt.subplots(figsize=(10, 7))
     bars = ax.bar(systems, tps_values, color=colors)
     ax.set_yscale('log')
-    ax.set_title('Transaction Per Second (TPS) Capacity Comparison (Log Scale) (Figure 5)', fontsize=16, pad=20)
+    ax.set_title('Transaction Per Second (TPS) Capacity Comparison (Log Scale) (Figure 6)', fontsize=16, pad=20)
     ax.set_ylabel('Transactions Per Second (Log Scale)', fontsize=12)
     ax.tick_params(axis='x', labelsize=11)
     
     for bar in bars:
         yval = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width() / 2.0, yval, f'{yval:,.0f}', ha='center', va='bottom', fontsize=10, weight='bold')
+        ax.text(bar.get_x() + bar.get_width() / 2.0, yval, f'{yval:,.0f}', ha='center', va='bottom', fontsize=10, weight='bold', color='white')
     
     plt.tight_layout()
-    plt.savefig('figure_5_tps_comparison.png', dpi=300)
+    plt.savefig('figure_6_tps_comparison.png', dpi=300)
     plt.show()
 
 
 def analyze_digital_gold_narrative(data):
     """
     Generates plots related to the 'digital gold' narrative:
-    Drawdown Analysis (Figure 11) and Correlation Analysis (Figure 12).
+    Drawdown Analysis (Figure 17) and Correlation Analysis (Figure 18).
     """
-    # --- Drawdown Analysis for Figure 11 ---
     btc_price = data[TICKERS['Bitcoin']].dropna()
     previous_peaks = btc_price.cummax()
     drawdowns = (btc_price - previous_peaks) / previous_peaks
     
     fig_draw, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
     
-    ax1.plot(btc_price.index, btc_price, label='Bitcoin Price (USD)', color='blue')
+    ax1.plot(btc_price.index, btc_price, label='Bitcoin Price (USD)', color='#3498db')
     ax1.set_yscale('log')
-    ax1.set_title('Bitcoin Price and Historical Drawdowns (Figure 11)', fontsize=16)
+    ax1.set_title('Bitcoin Price and Historical Drawdowns (Figure 17)', fontsize=16)
     ax1.set_ylabel('Price (USD, Log Scale)')
     ax1.legend()
-    ax1.grid(True, which="both", ls="--")
+    ax1.grid(True, which="both", ls="--", color="#555555")
     
-    ax2.plot(drawdowns.index, drawdowns * 100, label='Drawdown', color='red')
-    ax2.fill_between(drawdowns.index, drawdowns * 100, 0, color='red', alpha=0.3)
+    ax2.plot(drawdowns.index, drawdowns * 100, label='Drawdown', color='#e74c3c')
+    ax2.fill_between(drawdowns.index, drawdowns * 100, 0, color='#e74c3c', alpha=0.4)
     ax2.set_ylabel('Drawdown (%)')
     ax2.set_xlabel('Date')
     
     max_dd = drawdowns.min() * 100
-    ax2.text(drawdowns.idxmin(), max_dd, f'Max DD: {max_dd:.1f}%', ha='right', va='top', color='black', fontsize=10)
+    ax2.text(drawdowns.idxmin(), max_dd, f'Max DD: {max_dd:.1f}%', ha='right', va='top', color='white', fontsize=10)
     
     plt.tight_layout()
-    plt.savefig('figure_11_drawdowns.png', dpi=300)
+    plt.savefig('figure_17_drawdowns.png', dpi=300)
     plt.show()
     
-    # --- Correlation Analysis for Figure 12 ---
     sp500_ticker = TICKERS['S&P 500']
     btc_ticker = TICKERS['Bitcoin']
     
@@ -238,32 +248,28 @@ def analyze_digital_gold_narrative(data):
     rolling_corr = log_returns[btc_ticker].rolling(window=60).corr(log_returns[sp500_ticker])
     
     fig_corr, ax_corr = plt.subplots(figsize=(12, 6))
-    rolling_corr.plot(ax=ax_corr, color='purple')
-    ax_corr.set_title('60-Day Rolling Correlation: Bitcoin vs. S&P 500 (Figure 12)', fontsize=16)
+    rolling_corr.plot(ax=ax_corr, color='#9b59b6')
+    ax_corr.set_title('60-Day Rolling Correlation: Bitcoin vs. S&P 500 (Figure 18)', fontsize=16)
     ax_corr.set_ylabel('Pearson Correlation Coefficient')
-    ax_corr.axhline(0, color='black', linestyle='--', lw=1)
+    ax_corr.axhline(0, color='white', linestyle='--', lw=1)
     
     peak_corr = rolling_corr.max()
-    ax_corr.text(rolling_corr.idxmax(), peak_corr, f'Peak: {peak_corr:.2f}', ha='center', va='bottom', color='black', fontsize=10)
+    ax_corr.text(rolling_corr.idxmax(), peak_corr, f'Peak: {peak_corr:.2f}', ha='center', va='bottom', color='white', fontsize=10)
     
     plt.tight_layout()
-    plt.savefig('figure_12_rolling_correlation.png', dpi=300)
+    plt.savefig('figure_18_rolling_correlation.png', dpi=300)
     plt.show()
 
 
 # --- 4. SCRIPT EXECUTION ---
 
 if __name__ == '__main__':
-    # Use today's date for the download to get the latest data
     effective_end_date = datetime.datetime.now().strftime('%Y-%m-%d')
     print(f"Starting analysis for paper dated: {FINAL_ANALYSIS_DATE}")
     print(f"Fetching data from {FULL_START_DATE} to {effective_end_date}")
 
-    # 1. Load Data
-    # *** CORRECTED FUNCTION CALL ***
     full_data = get_data(start_date=FULL_START_DATE, end_date=effective_end_date, cache_filename=CACHE_FILENAME)
     
-    # 2. Create subsets for different analyses
     if pd.to_datetime(START_DATE_VOLATILITY) <= full_data.index.max():
         volatility_data = full_data.loc[START_DATE_VOLATILITY:]
     else:
@@ -272,7 +278,6 @@ if __name__ == '__main__':
     if full_data.empty or volatility_data.empty:
         print("\nERROR: Data frames are empty after loading and slicing. Cannot proceed.")
     else:
-        # 3. Generate Figures
         print("\n--- Generating Figures ---")
         generate_volatility_comparison_chart(full_data)
         analyze_risk_and_garch(volatility_data)
