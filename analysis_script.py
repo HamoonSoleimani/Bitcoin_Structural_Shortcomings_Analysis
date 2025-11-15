@@ -9,6 +9,7 @@
 # Description: This script reproduces the core quantitative analyses
 #              for Figures 2, 3, 4, 5, 11, and 12, ensuring full
 #              reproducibility via a static data file.
+# Version:    3.0 (Corrected and Robust)
 # ==============================================================================
 
 import pandas as pd
@@ -28,7 +29,6 @@ plt.style.use('seaborn-v0_8-whitegrid')
 warnings.filterwarnings("ignore", category=UserWarning) # Suppress minor plot warnings
 
 # --- HARDCODED DATES (CRITICAL FOR REPRODUCIBILITY) ---
-# All analyses are anchored to this date range.
 FINAL_ANALYSIS_DATE = '2025-11-13'
 START_DATE_DRAWDOWN = '2015-01-01'
 START_DATE_VOLATILITY = '2020-01-01'
@@ -47,45 +47,40 @@ CACHE_FILENAME = "research_data_static.csv"
 
 # --- 2. ROBUST DATA LOADING UTILITY ---
 
-def get_data(tickers_dict, start_date, end_date, cache_filename):
+def get_data(start_date, end_date, cache_filename):
     """
     Loads historical price data. Prioritizes static CSV for reproducibility.
-    If CSV is missing, it fetches data from yfinance and creates the CSV.
+    If CSV is missing, it fetches all required data in a single API call.
     """
-    tickers = list(tickers_dict.values())
-    
+    # Combine all necessary tickers into one list for a single download
+    all_tickers_needed = list(TICKERS.values()) + list(ASSETS_FOR_VOL_COMP.keys())
+    all_tickers_needed = sorted(list(set(all_tickers_needed))) # Remove duplicates
+
     if os.path.exists(cache_filename):
         print(f"Loading data from static file: {cache_filename}...")
         try:
             data = pd.read_csv(cache_filename, index_col='Date', parse_dates=True)
-            # Ensure the required columns exist (yfinance sometimes changes names/formats)
-            if all(t in data.columns for t in tickers):
-                # Ensure date range is correct
-                return data.loc[start_date:end_date]
+            if not data.empty and all(t in data.columns for t in all_tickers_needed):
+                return data.dropna()
             else:
-                print("Static data file is corrupt or missing required columns. Refetching.")
+                print("Static data file is empty or incomplete. Refetching all data.")
         except Exception as e:
             print(f"Error loading static file ({e}). Refetching data.")
 
-    # Fallback to yfinance (downloads the data used for the analysis)
     print("Fetching new data from yfinance (API Fallback)...")
     try:
-        data = yf.download(tickers, start=FULL_START_DATE, end=end_date)['Close']
-        if isinstance(data, pd.Series):
-            data = data.to_frame(name=tickers[0])
+        data = yf.download(all_tickers_needed, start=start_date, end=end_date)['Close'].dropna()
+        if data.empty:
+            raise ValueError("Download from yfinance resulted in an empty DataFrame. Check tickers and dates.")
         
-        # Add Apple data specifically for Figure 2
-        aapl_data = yf.download(ASSETS_FOR_VOL_COMP['AAPL'], start=FULL_START_DATE, end=end_date)['Close']
-        data['AAPL'] = aapl_data
-        
-        data.to_csv(cache_filename) # Save for future runs
+        data.to_csv(cache_filename)
         print(f"Data saved to static file: {cache_filename}")
-        return data.loc[start_date:end_date].dropna()
+        return data
     except Exception as e:
-        raise ConnectionError(f"Failed to fetch data from yfinance: {e}. Check network connection or API status.")
+        raise ConnectionError(f"Failed to fetch data from yfinance: {e}")
 
 
-# --- 3. ANALYSIS AND VISUALIZATION FUNCTIONS ---
+# --- 3. ANALYSIS AND VISUALIZATION FUNCTIONS (UNCHANGED) ---
 
 def generate_volatility_comparison_chart(df_raw):
     """
@@ -131,7 +126,6 @@ def analyze_risk_and_garch(data):
     log_returns = np.log(data / data.shift(1)).dropna()
     
     # --- Value-at-Risk (VaR) Analysis for Figure 3 ---
-    # Calculate 1-day 95% VaR (5th percentile of historical log returns)
     var_results = [{'Asset': name, 'VaR_95': log_returns[ticker].quantile(0.05) * 100}
                    for name, ticker in TICKERS.items() if ticker in log_returns.columns]
     var_df = pd.DataFrame(var_results).sort_values('VaR_95', ascending=True)
@@ -151,15 +145,12 @@ def analyze_risk_and_garch(data):
 
     # --- GARCH Modeling for Figure 4 ---
     btc_returns = log_returns[TICKERS['Bitcoin']].dropna() * 100
-    # Use standard GARCH(1,1) model with t-distribution error assumption 
-    # for fat tails, typical for crypto data (as suggested by literature).
     model = arch_model(btc_returns, vol='Garch', p=1, q=1, dist='t')
     results = model.fit(disp='off')
     
     print("\nGARCH(1,1) Model Parameters (Figure 4 supporting data):")
     print(results.summary())
     
-    # Calculate volatility persistence (alpha + beta)
     persistence = results.params['alpha[1]'] + results.params['beta[1]']
     half_life = np.log(0.5) / np.log(persistence)
     print(f"\nVolatility Persistence (alpha + beta): {persistence:.4f}")
@@ -179,9 +170,8 @@ def analyze_risk_and_garch(data):
 def generate_tps_chart():
     """
     Reproduces Figure 5: Transaction Per Second (TPS) Capacity Comparison.
-    Data is hardcoded from corporate 10-K filings and public ledger data.
     """
-    btc_tps = 6.0  # Realized average Bitcoin on-chain TPS
+    btc_tps = 6.0
     mastercard_transactions_2024 = 159.4e9
     visa_transactions_2024 = 303e9
     seconds_in_year = 365.25 * 24 * 60 * 60
@@ -202,7 +192,6 @@ def generate_tps_chart():
     
     for bar in bars:
         yval = bar.get_height()
-        # Annotate with the precise value
         ax.text(bar.get_x() + bar.get_width() / 2.0, yval, f'{yval:,.0f}', ha='center', va='bottom', fontsize=10, weight='bold')
     
     plt.tight_layout()
@@ -215,7 +204,6 @@ def analyze_digital_gold_narrative(data):
     Generates plots related to the 'digital gold' narrative:
     Drawdown Analysis (Figure 11) and Correlation Analysis (Figure 12).
     """
-    
     # --- Drawdown Analysis for Figure 11 ---
     btc_price = data[TICKERS['Bitcoin']].dropna()
     previous_peaks = btc_price.cummax()
@@ -235,7 +223,6 @@ def analyze_digital_gold_narrative(data):
     ax2.set_ylabel('Drawdown (%)')
     ax2.set_xlabel('Date')
     
-    # Highlight max drawdown percentage
     max_dd = drawdowns.min() * 100
     ax2.text(drawdowns.idxmin(), max_dd, f'Max DD: {max_dd:.1f}%', ha='right', va='top', color='black', fontsize=10)
     
@@ -256,7 +243,6 @@ def analyze_digital_gold_narrative(data):
     ax_corr.set_ylabel('Pearson Correlation Coefficient')
     ax_corr.axhline(0, color='black', linestyle='--', lw=1)
     
-    # Highlight periods of high correlation (e.g., 2022)
     peak_corr = rolling_corr.max()
     ax_corr.text(rolling_corr.idxmax(), peak_corr, f'Peak: {peak_corr:.2f}', ha='center', va='bottom', color='black', fontsize=10)
     
@@ -268,18 +254,25 @@ def analyze_digital_gold_narrative(data):
 # --- 4. SCRIPT EXECUTION ---
 
 if __name__ == '__main__':
-    print(f"Starting analysis using data up to: {FINAL_ANALYSIS_DATE}")
-    
+    # Use today's date for the download to get the latest data
+    effective_end_date = datetime.datetime.now().strftime('%Y-%m-%d')
+    print(f"Starting analysis for paper dated: {FINAL_ANALYSIS_DATE}")
+    print(f"Fetching data from {FULL_START_DATE} to {effective_end_date}")
+
     # 1. Load Data
-    full_data = get_data(TICKERS, start_date=FULL_START_DATE, end_date=FINAL_ANALYSIS_DATE, cache_filename=CACHE_FILENAME)
+    # *** CORRECTED FUNCTION CALL ***
+    full_data = get_data(start_date=FULL_START_DATE, end_date=effective_end_date, cache_filename=CACHE_FILENAME)
     
-    # Define subsets based on analysis start dates
-    volatility_data = full_data.loc[START_DATE_VOLATILITY:]
-    
-    if full_data.empty or volatility_data.empty:
-        print("ERROR: Data frames are empty. Cannot proceed with analysis.")
+    # 2. Create subsets for different analyses
+    if pd.to_datetime(START_DATE_VOLATILITY) <= full_data.index.max():
+        volatility_data = full_data.loc[START_DATE_VOLATILITY:]
     else:
-        # 2. Generate Figures
+        volatility_data = pd.DataFrame() 
+
+    if full_data.empty or volatility_data.empty:
+        print("\nERROR: Data frames are empty after loading and slicing. Cannot proceed.")
+    else:
+        # 3. Generate Figures
         print("\n--- Generating Figures ---")
         generate_volatility_comparison_chart(full_data)
         analyze_risk_and_garch(volatility_data)
