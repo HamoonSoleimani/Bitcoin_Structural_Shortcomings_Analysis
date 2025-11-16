@@ -6,16 +6,18 @@
 # Author:     Hamoon Soleimani
 # Date:       November 13, 2025 (Date of final analysis)
 #
-# Description: This script reproduces the core quantitative analyses
-#              for Figures 2, 3, 4, 6, 17, and 18, ensuring full
-#              reproducibility via a static data file.
-# Version:    4.2 (Final - Corrected plotting loop bug)
+# Description: This script reproduces the core quantitative analyses and
+#              visualizations for the research paper, including Figures 2, 3, 4,
+#              6, 9, 17, and 18. It ensures full reproducibility for data-driven
+#              plots via a static data file.
+# Version:    4.4 (Final - Corrected pandas plot TypeError and SyntaxWarning)
 # ==============================================================================
 
 import pandas as pd
 import numpy as np
 import yfinance as yf
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 from arch import arch_model
 import datetime
 import os
@@ -40,6 +42,12 @@ plt.rcParams.update({
     "legend.edgecolor": "white",
     "figure.facecolor": "black",
     "figure.edgecolor": "black",
+    "font.family": "serif",
+    "font.serif": ["Times New Roman"],
+    "axes.labelsize": 12,
+    "xtick.labelsize": 10,
+    "ytick.labelsize": 10,
+    "legend.fontsize": 10,
 })
 warnings.filterwarnings("ignore", category=UserWarning) # Suppress minor plot warnings
 
@@ -113,7 +121,6 @@ def generate_volatility_comparison_chart(df_raw):
     
     ax1 = axes[0]
     for asset_name in ASSETS_FOR_VOL_COMP.values():
-        # *** BUG FIX HERE: Use `asset_name` instead of `col` ***
         df[f'{asset_name} Volatility 15d'].plot(ax=ax1, color=colors[asset_name], lw=2, label=asset_name)
     ax1.set_ylabel("15-Day Annualized Volatility")
     ax1.set_title("Short-Term Volatility Comparison (Annualized)")
@@ -121,7 +128,6 @@ def generate_volatility_comparison_chart(df_raw):
     
     ax2 = axes[1]
     for asset_name in ASSETS_FOR_VOL_COMP.values():
-        # *** BUG FIX HERE: Use `asset_name` instead of `col` ***
         df[f'{asset_name} Volatility 200d'].plot(ax=ax2, color=colors[asset_name], lw=2, label=asset_name)
     ax2.set_ylabel("200-Day Annualized Volatility")
     ax2.set_title("Long-Term Volatility Comparison (Annualized)")
@@ -150,7 +156,7 @@ def analyze_risk_and_garch(data):
     
     for bar in bars:
         yval = bar.get_height()
-        ax_var.text(bar.get_x() + bar.get_width() / 2.0, yval + 0.1, f'{yval:.2f}%', ha='center', va='bottom', weight='bold', color='white')
+        ax_var.text(bar.get_x() + bar.get_width() / 2.0, yval - 0.1, f'{yval:.2f}%', ha='center', va='top', weight='bold', color='white')
     
     plt.tight_layout()
     plt.savefig('figure_3_value_at_risk.png', dpi=300)
@@ -211,6 +217,68 @@ def generate_tps_chart():
     plt.show()
 
 
+def generate_centralization_parameter_map():
+    """
+    Reproduces Figure 9: Parameter map for social optimum in the Lightning Network game.
+    This visualization is based on the theoretical model from Avarikioti et al. (2020).
+    """
+    # --- Define the Parameter Space ---
+    # Create a grid of b and c values
+    b_vals = np.linspace(0, 2, 500)
+    c_vals = np.linspace(0, 2, 500)
+    B, C = np.meshgrid(b_vals, c_vals)
+
+    # --- Define the Conditions from Theorem 1 of Avarikioti et al. (2000) ---
+    # Create an integer array to hold the region ID for each point
+    # 0: Path Graph, 1: Star Graph, 2: Complete Graph
+    Z = np.zeros_like(B)
+
+    # Apply conditions to the grid
+    Z[C < B] = 0  # Path Graph condition
+    Z[(C >= B) & (C <= B + 0.5)] = 1  # Star Graph condition
+    Z[C > B + 0.5] = 2  # Complete Graph condition
+
+    # --- Create the Plot ---
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    # Define distinct, professional colors for each region, friendly to the dark theme
+    colors = ['#ffeda0', '#a1d99b', '#9ecae1'] # Light Yellow, Green, Blue
+    cmap = plt.matplotlib.colors.ListedColormap(colors)
+
+    # Plot the colored regions using imshow
+    ax.imshow(Z, origin='lower', extent=[0, 2, 0, 2], cmap=cmap, aspect='auto', interpolation='nearest')
+
+    # --- Add Boundary Lines for Clarity ---
+    ax.plot(b_vals, b_vals, color='white', linestyle='--', linewidth=1.5, label=r'Boundary: $c = b$')
+    ax.plot(b_vals, b_vals + 0.5, color='white', linestyle='-.', linewidth=1.5, label=r'Boundary: $c = b + 0.5$')
+
+    # --- Labels, Title, and Legend ---
+    ax.set_xlabel('Incentive to Earn Routing Fees (b)')
+    ax.set_ylabel('Incentive for Low-Cost Personal Transactions (c)')
+    ax.set_title("Social Optimum Topologies in a Payment Network Creation Game (Figure 9)", fontsize=16, pad=15)
+
+    # Create a custom legend for the colored regions
+    legend_patches = [
+        mpatches.Patch(color=colors[2], label=r'Complete Graph ($c > b + 0.5$)'),
+        mpatches.Patch(color=colors[1], label=r'Star Graph ($b \leq c \leq b + 0.5$)'),
+        mpatches.Patch(color=colors[0], label=r'Path Graph ($c < b$)')
+    ]
+
+    # Combine with the line legends
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles=handles + legend_patches, loc='upper left')
+
+    # --- Final Touches ---
+    ax.set_xlim(0, 2)
+    ax.set_ylim(0, 2)
+    ax.grid(True, which="both", ls=":", alpha=0.6)
+    plt.tight_layout()
+
+    # Save the figure to be used in your LaTeX document
+    plt.savefig("figure_centralization_parameter_map.png", dpi=300)
+    plt.show()
+
+
 def analyze_digital_gold_narrative(data):
     """
     Generates plots related to the 'digital gold' narrative:
@@ -248,7 +316,10 @@ def analyze_digital_gold_narrative(data):
     rolling_corr = log_returns[btc_ticker].rolling(window=60).corr(log_returns[sp500_ticker])
     
     fig_corr, ax_corr = plt.subplots(figsize=(12, 6))
+    
+    # *** FIX APPLIED HERE: Used keyword argument `ax=` ***
     rolling_corr.plot(ax=ax_corr, color='#9b59b6')
+    
     ax_corr.set_title('60-Day Rolling Correlation: Bitcoin vs. S&P 500 (Figure 18)', fontsize=16)
     ax_corr.set_ylabel('Pearson Correlation Coefficient')
     ax_corr.axhline(0, color='white', linestyle='--', lw=1)
@@ -266,23 +337,38 @@ def analyze_digital_gold_narrative(data):
 if __name__ == '__main__':
     effective_end_date = datetime.datetime.now().strftime('%Y-%m-%d')
     print(f"Starting analysis for paper dated: {FINAL_ANALYSIS_DATE}")
-    print(f"Fetching data from {FULL_START_DATE} to {effective_end_date}")
 
-    full_data = get_data(start_date=FULL_START_DATE, end_date=effective_end_date, cache_filename=CACHE_FILENAME)
-    
-    if pd.to_datetime(START_DATE_VOLATILITY) <= full_data.index.max():
-        volatility_data = full_data.loc[START_DATE_VOLATILITY:]
-    else:
-        volatility_data = pd.DataFrame() 
+    # Check if we need to fetch data
+    try:
+        full_data = get_data(start_date=FULL_START_DATE, end_date=effective_end_date, cache_filename=CACHE_FILENAME)
+        data_loaded = True
+    except (ConnectionError, ValueError) as e:
+        print(f"\nCRITICAL ERROR: Could not load data. {e}")
+        print("Skipping data-driven visualizations.")
+        full_data = pd.DataFrame()
+        data_loaded = False
 
-    if full_data.empty or volatility_data.empty:
-        print("\nERROR: Data frames are empty after loading and slicing. Cannot proceed.")
-    else:
-        print("\n--- Generating Figures ---")
-        generate_volatility_comparison_chart(full_data)
-        analyze_risk_and_garch(volatility_data)
-        generate_tps_chart()
-        analyze_digital_gold_narrative(full_data)
-        
-        print("\nAll data-driven figures have been generated and saved to the current directory.")
-        print("Note: GARCH parameters and Volatility Persistence/Half-Life are printed above.")
+    # --- Generate Non-Data-Driven (Theoretical) Figures ---
+    print("\n--- Generating Theoretical and Static Figures ---")
+    generate_tps_chart() # Figure 6 (Static data)
+    generate_centralization_parameter_map() # Figure 9 (Theoretical model)
+
+    # --- Generate Data-Driven Figures ---
+    if data_loaded and not full_data.empty:
+        if pd.to_datetime(START_DATE_VOLATILITY) <= full_data.index.max():
+            volatility_data = full_data.loc[START_DATE_VOLATILITY:]
+        else:
+            volatility_data = pd.DataFrame() 
+
+        if volatility_data.empty:
+            print("\nERROR: Volatility data frame is empty after slicing. Cannot proceed with VaR/GARCH.")
+        else:
+            print("\n--- Generating Data-Driven Figures ---")
+            generate_volatility_comparison_chart(full_data) # Figure 2
+            analyze_risk_and_garch(volatility_data) # Figures 3 & 4
+            analyze_digital_gold_narrative(full_data) # Figures 17 & 18
+            
+            print("\nAll data-driven figures have been generated and saved to the current directory.")
+            print("Note: GARCH parameters and Volatility Persistence/Half-Life are printed above.")
+    elif data_loaded:
+        print("\nERROR: Main data frame is empty after loading. Cannot proceed with data-driven analysis.")
