@@ -13,7 +13,7 @@ This repository provides the complete, open-source Python script and the static 
 
 ## 1. Reproducibility Guarantee
 
-The goal of this repository is to ensure **100% reproducibility** of the data-driven figures (Figures 2, 3, 4, 5, 11, and 12).
+The goal of this repository is to ensure **100% reproducibility** of the data-driven figures (Figures 2, 3, 4, 6, 17, and 18).
 
 *   **Static Data:** The analysis relies on historical price data for BTC-USD, GC=F, ^GSPC, UUP, and AAPL, finalized on **November 13, 2025**. This data is included in the file `research_data_static.csv`.
 *   **Static Dates:** The analysis script is hardcoded to use the exact start and end dates used in the paper, ensuring that rerunning the script yields the identical results presented in the publication.
@@ -66,7 +66,7 @@ The `analysis_script.py` performs the following key functions, referencing the f
 | `generate_volatility_comparison_chart` | 15-day and 200-day Annualized Rolling Volatility for BTC, Gold, and Apple (log scale). | Figure 2 | Yermack (2014) |
 | `analyze_risk_and_garch` | Calculates 1-Day 95% Value-at-Risk (VaR) for core assets. | Figure 3 | |
 | `analyze_risk_and_garch` | Fits the GARCH(1,1) model to Bitcoin returns, calculating conditional volatility and half-life persistence. | Figure 4 | Chinazzo & Jeleskovic (2024) |
-| `generate_tps_chart` | Visualization of Transaction Per Second (TPS) comparison against Visa and Mastercard. | Figure 5 | Visa 10-K (2024), Mastercard 10-K (2024) |
-| `analyze_digital_gold_narrative` | Calculates and visualizes Bitcoin's maximum historical drawdown from All-Time Highs. | Figure 11 | iShares (2025) |
-| `analyze_digital_gold_narrative` | Calculates and plots the 60-Day Rolling Correlation between Bitcoin and the S&P 500. | Figure 12 | Conlon et al. (2020) |
+| `generate_tps_chart` | Visualization of Transaction Per Second (TPS) comparison against Visa and Mastercard. | Figure 6 | Visa 10-K (2024), Mastercard 10-K (2024) |
+| `analyze_digital_gold_narrative` | Calculates and visualizes Bitcoin's maximum historical drawdown from All-Time Highs. | Figure 17 | iShares (2025) |
+| `analyze_digital_gold_narrative` | Calculates and plots the 60-Day Rolling Correlation between Bitcoin and the S&P 500. | Figure 18 | Conlon et al. (2020) |
 
