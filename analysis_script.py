@@ -8,9 +8,9 @@
 #
 # Description: This script reproduces the core quantitative analyses and
 #              visualizations for the research paper, including Figures 2, 3, 4,
-#              6, 9, 17, and 18. It ensures full reproducibility for data-driven
+#              5, 6, 9, 17, and 18. It ensures full reproducibility for data-driven
 #              plots via a static data file.
-# Version:    4.4 (Final - Corrected pandas plot TypeError and SyntaxWarning)
+# Version:    5.0 (Final - Added interactive user menu)
 # ==============================================================================
 
 import pandas as pd
@@ -18,6 +18,7 @@ import numpy as np
 import yfinance as yf
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+from matplotlib.patches import FancyArrowPatch
 from arch import arch_model
 import datetime
 import os
@@ -108,6 +109,7 @@ def generate_volatility_comparison_chart(df_raw):
     """
     Reproduces Figure 2: Comparative Rolling Volatility (BTC, Gold, Apple).
     """
+    print("\nGenerating Figure 2: Comparative Rolling Volatility...")
     ROLLING_WINDOWS = [15, 200]
     df = df_raw.rename(columns=ASSETS_FOR_VOL_COMP).dropna()
     
@@ -142,6 +144,7 @@ def analyze_risk_and_garch(data):
     """
     Runs VaR analysis (Figure 3) and GARCH modeling (Figure 4) on asset returns.
     """
+    print("\nGenerating Figure 3: Value-at-Risk (VaR) Comparison...")
     log_returns = np.log(data / data.shift(1)).dropna()
     
     var_results = [{'Asset': name, 'VaR_95': log_returns[ticker].quantile(0.05) * 100}
@@ -162,6 +165,7 @@ def analyze_risk_and_garch(data):
     plt.savefig('figure_3_value_at_risk.png', dpi=300)
     plt.show()
 
+    print("\nGenerating Figure 4: GARCH Conditional Volatility...")
     btc_returns = log_returns[TICKERS['Bitcoin']].dropna() * 100
     model = arch_model(btc_returns, vol='Garch', p=1, q=1, dist='t')
     results = model.fit(disp='off')
@@ -185,10 +189,89 @@ def analyze_risk_and_garch(data):
     plt.show()
 
 
+def generate_supply_volatility_model_figure_dark():
+    """
+    Reproduces Figure 5: A theoretical model comparing fixed vs. elastic supply.
+    This version is redesigned to be fully compatible with the script's dark theme.
+    """
+    print("\nGenerating Figure 5: Supply/Demand Model...")
+    # Create figure using global dark theme settings
+    fig = plt.figure(figsize=(18, 9), dpi=150)
+    gs = fig.add_gridspec(1, 2, left=0.08, right=0.95, top=0.90, bottom=0.12, wspace=0.30)
+    ax1 = fig.add_subplot(gs[0, 0])
+    ax2 = fig.add_subplot(gs[0, 1])
+
+    def setup_axes(ax, title):
+        ax.set_xlim(-2, 12)
+        ax.set_ylim(-2, 12)
+        for spine in ax.spines.values(): spine.set_visible(False)
+        ax.set_xticks([]); ax.set_yticks([])
+        arrow_props = dict(arrowstyle='->', lw=2, color='white', mutation_scale=20, clip_on=False)
+        ax.add_patch(FancyArrowPatch((0, 0), (11.5, 0), **arrow_props))
+        ax.add_patch(FancyArrowPatch((0, 0), (0, 11.5), **arrow_props))
+        ax.text(11.8, -0.4, 'Quantity ($q$)', fontsize=13, ha='center', va='top', style='italic', weight='semibold')
+        ax.text(-0.5, 11.8, 'Price ($p$)', fontsize=13, ha='right', va='center', style='italic', weight='semibold')
+        ax.text(5.5, 12.8, title, fontsize=17, ha='center', va='bottom', weight='bold', 
+                bbox=dict(boxstyle='round,pad=0.6', facecolor='#1a1a1a', edgecolor='white', alpha=0.95, linewidth=1.5))
+
+    def draw_bracket(ax, x1, y1, x2, y2, label, o='vertical', lo=0.5, c='white', cap_inward=False):
+        props = dict(color=c, lw=1.5, solid_capstyle='round'); offset = 0.2 if cap_inward else -0.2
+        if o == 'vertical':
+            ax.plot([x1, x1], [y1, y2], **props); ax.plot([x1, x1 + offset], [y1, y1], **props); ax.plot([x1, x1 + offset], [y2, y2], **props)
+            ax.text(x1 - lo, (y1 + y2) / 2, label, ha='right', va='center', fontsize=11, style='italic', weight='semibold',
+                    bbox=dict(boxstyle='round,pad=0.4', facecolor='black', edgecolor=c, alpha=0.95, linewidth=1.2))
+        else:
+            ax.plot([x1, x2], [y1, y1], **props); ax.plot([x1, x1], [y1, y1 + offset], **props); ax.plot([x2, x2], [y1, y1 + offset], **props)
+            ax.text((x1 + x2) / 2, y1 - lo, label, ha='center', va='top', fontsize=11, style='italic', weight='semibold',
+                    bbox=dict(boxstyle='round,pad=0.4', facecolor='black', edgecolor=c, alpha=0.95, linewidth=1.2))
+
+    # Chart 1: Bitcoin
+    setup_axes(ax1, 'Bitcoin (Fixed Supply)')
+    q_s = 5.5; ax1.plot([q_s, q_s], [0, 11], '#3498db', lw=3, zorder=3)
+    ax1.text(q_s + 0.4, 11.5, '$S$', ha='center', va='bottom', fontsize=16, weight='bold', color='#3498db', bbox=dict(boxstyle='round,pad=0.35', facecolor='black', edgecolor='#3498db', lw=1.5))
+    dx=np.linspace(0, 8.5, 200); dy1=11.5-dx; dy2=8.5-dx
+    ax1.plot(dx, dy1,'-',c='#e74c3c',lw=3,zorder=2); ax1.plot(dx,dy2,'--',c='#f39c12',lw=3,dashes=(8,4),zorder=2)
+    ax1.text(8.7,3.0,'$D$',fontsize=16,weight='bold',c='#e74c3c',bbox=dict(boxstyle='circle,pad=0.4',facecolor='black',edgecolor='#e74c3c',lw=1.5))
+    ax1.text(8.7,0.2,"$D'$",fontsize=16,weight='bold',c='#f39c12',bbox=dict(boxstyle='circle,pad=0.4',facecolor='black',edgecolor='#f39c12',lw=1.5))
+    p1,p2=6.0,3.0; ax1.plot([0,q_s],[p1,p1],c='#777',ls='--',lw=1.5,dashes=(6,4),zorder=1); ax1.plot([0,q_s],[p2,p2],c='#777',ls='--',lw=1.5,dashes=(6,4),zorder=1)
+    ax1.plot(q_s,p1,'o',ms=11,c='#e74c3c',mec='white',mew=2.5,zorder=5); ax1.plot(q_s,p2,'o',ms=11,c='#f39c12',mec='white',mew=2.5,zorder=5)
+    ax1.text(q_s+0.6, p1, '$E_1$', fontsize=12, weight='bold'); ax1.text(q_s+0.6, p2, '$E_2$', fontsize=12, weight='bold')
+    bbox_props = dict(boxstyle='round,pad=0.25',facecolor='black',edgecolor='#777',lw=0.8)
+    ax1.text(-0.4,p1,'$p_1$',ha='right',va='center',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
+    ax1.text(-0.4,p2,'$p_2$',ha='right',va='center',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
+    ax1.text(q_s,-0.4,'$q^*$',ha='center',va='top',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
+    draw_bracket(ax1,-1.1,p2,-1.1,p1,'Price\nVolatility',c='#e74c3c',cap_inward=True); bx=7.5; draw_bracket(ax1,bx+0.3,8.5-bx,bx+0.3,11.5-bx,'Demand\nShift','vertical',-0.8,'#bbb')
+
+    # Chart 2: Alternative
+    setup_axes(ax2, 'Alternative System (Elastic Supply)')
+    p_s = 5.5; ax2.plot([0,11],[p_s,p_s],'#3498db',lw=3,zorder=3)
+    ax2.text(11.5, p_s+0.3,'$S$',ha='left',va='bottom',fontsize=16,weight='bold',color='#3498db',bbox=dict(boxstyle='round,pad=0.35',facecolor='black',edgecolor='#3498db',lw=1.5))
+    ax2.plot(dx,dy1,'-',c='#e74c3c',lw=3,zorder=2); ax2.plot(dx,dy2,'--',c='#f39c12',lw=3,dashes=(8,4),zorder=2)
+    ax2.text(8.7,3.0,'$D$',fontsize=16,weight='bold',c='#e74c3c',bbox=dict(boxstyle='circle,pad=0.4',facecolor='black',edgecolor='#e74c3c',lw=1.5))
+    ax2.text(8.7,0.2,"$D'$",fontsize=16,weight='bold',c='#f39c12',bbox=dict(boxstyle='circle,pad=0.4',facecolor='black',edgecolor='#f39c12',lw=1.5))
+    q1,q2=6.0,3.0; ax2.plot([q1,q1],[0,p_s],c='#777',ls='--',lw=1.5,dashes=(6,4),zorder=1); ax2.plot([q2,q2],[0,p_s],c='#777',ls='--',lw=1.5,dashes=(6,4),zorder=1)
+    ax2.plot(q1,p_s,'o',ms=11,c='#e74c3c',mec='white',mew=2.5,zorder=5); ax2.plot(q2,p_s,'o',ms=11,c='#f39c12',mec='white',mew=2.5,zorder=5)
+    ax2.text(q1,p_s+0.6,'$E_1$',fontsize=12,weight='bold',ha='center',va='bottom'); ax2.text(q2,p_s+0.6,'$E_2$',fontsize=12,weight='bold',ha='center',va='bottom')
+    ax2.text(q1,-0.4,'$q_1$',ha='center',va='top',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
+    ax2.text(q2,-0.4,'$q_2$',ha='center',va='top',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
+    ax2.text(-0.4,p_s,'$p^*$',ha='right',va='center',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
+    ax2.plot([-1.3,-0.2],[p_s,p_s],'-',c='#2ecc71',lw=3,zorder=4); ax2.text(-1.5,p_s,'Price\nStability',ha='right',va='center',fontsize=11,style='italic',c='#2ecc71',weight='bold',bbox=dict(boxstyle='round,pad=0.4',facecolor='#102510',edgecolor='#2ecc71',alpha=0.95,lw=1.5))
+    draw_bracket(ax2,q2,-1.3,q1,-1.3,'Supply\nAdjustment','horizontal',0.85,'#3498db',cap_inward=True); draw_bracket(ax2,bx+0.3,8.5-bx,bx+0.3,11.5-bx,'Demand\nShift','vertical',-0.8,'#bbb')
+    
+    # Caption and final touches
+    cy=0.04;
+    fig.text(0.5,cy-0.01,'Comparison of Fixed vs. Flexible Supply Response',ha='center',va='top',fontsize=13,weight='semibold')
+    fig.text(0.5,cy-0.04,'Left: Inelastic supply, price volatility | Right: Elastic supply, price stability',ha='center',va='top',fontsize=11,style='italic',c='#aaa')
+    for ax in [ax1, ax2]: ax.grid(True,alpha=0.12,ls=':',lw=0.6,zorder=0); ax.set_axisbelow(True)
+    plt.savefig('figure_5_supply_volatility_model.png', dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor())
+    plt.show()
+
+
 def generate_tps_chart():
     """
     Reproduces Figure 6: Transaction Per Second (TPS) Capacity Comparison.
     """
+    print("\nGenerating Figure 6: TPS Capacity Comparison...")
     btc_tps = 6.0
     mastercard_transactions_2024 = 159.4e9
     visa_transactions_2024 = 303e9
@@ -220,62 +303,28 @@ def generate_tps_chart():
 def generate_centralization_parameter_map():
     """
     Reproduces Figure 9: Parameter map for social optimum in the Lightning Network game.
-    This visualization is based on the theoretical model from Avarikioti et al. (2020).
     """
-    # --- Define the Parameter Space ---
-    # Create a grid of b and c values
-    b_vals = np.linspace(0, 2, 500)
-    c_vals = np.linspace(0, 2, 500)
+    print("\nGenerating Figure 9: Lightning Network Centralization Map...")
+    b_vals = np.linspace(0, 2, 500); c_vals = np.linspace(0, 2, 500)
     B, C = np.meshgrid(b_vals, c_vals)
-
-    # --- Define the Conditions from Theorem 1 of Avarikioti et al. (2000) ---
-    # Create an integer array to hold the region ID for each point
-    # 0: Path Graph, 1: Star Graph, 2: Complete Graph
     Z = np.zeros_like(B)
-
-    # Apply conditions to the grid
-    Z[C < B] = 0  # Path Graph condition
-    Z[(C >= B) & (C <= B + 0.5)] = 1  # Star Graph condition
-    Z[C > B + 0.5] = 2  # Complete Graph condition
-
-    # --- Create the Plot ---
+    Z[C < B] = 0; Z[(C >= B) & (C <= B + 0.5)] = 1; Z[C > B + 0.5] = 2
     fig, ax = plt.subplots(figsize=(10, 8))
-
-    # Define distinct, professional colors for each region, friendly to the dark theme
-    colors = ['#ffeda0', '#a1d99b', '#9ecae1'] # Light Yellow, Green, Blue
+    colors = ['#ffeda0', '#a1d99b', '#9ecae1']
     cmap = plt.matplotlib.colors.ListedColormap(colors)
-
-    # Plot the colored regions using imshow
     ax.imshow(Z, origin='lower', extent=[0, 2, 0, 2], cmap=cmap, aspect='auto', interpolation='nearest')
-
-    # --- Add Boundary Lines for Clarity ---
     ax.plot(b_vals, b_vals, color='white', linestyle='--', linewidth=1.5, label=r'Boundary: $c = b$')
     ax.plot(b_vals, b_vals + 0.5, color='white', linestyle='-.', linewidth=1.5, label=r'Boundary: $c = b + 0.5$')
-
-    # --- Labels, Title, and Legend ---
-    ax.set_xlabel('Incentive to Earn Routing Fees (b)')
-    ax.set_ylabel('Incentive for Low-Cost Personal Transactions (c)')
+    ax.set_xlabel('Incentive to Earn Routing Fees (b)'); ax.set_ylabel('Incentive for Low-Cost Personal Transactions (c)')
     ax.set_title("Social Optimum Topologies in a Payment Network Creation Game (Figure 9)", fontsize=16, pad=15)
-
-    # Create a custom legend for the colored regions
-    legend_patches = [
-        mpatches.Patch(color=colors[2], label=r'Complete Graph ($c > b + 0.5$)'),
-        mpatches.Patch(color=colors[1], label=r'Star Graph ($b \leq c \leq b + 0.5$)'),
-        mpatches.Patch(color=colors[0], label=r'Path Graph ($c < b$)')
-    ]
-
-    # Combine with the line legends
+    legend_patches = [mpatches.Patch(color=colors[2], label=r'Complete Graph ($c > b + 0.5$)'),
+                      mpatches.Patch(color=colors[1], label=r'Star Graph ($b \leq c \leq b + 0.5$)'),
+                      mpatches.Patch(color=colors[0], label=r'Path Graph ($c < b$)')]
     handles, labels = ax.get_legend_handles_labels()
     ax.legend(handles=handles + legend_patches, loc='upper left')
-
-    # --- Final Touches ---
-    ax.set_xlim(0, 2)
-    ax.set_ylim(0, 2)
-    ax.grid(True, which="both", ls=":", alpha=0.6)
+    ax.set_xlim(0, 2); ax.set_ylim(0, 2); ax.grid(True, which="both", ls=":", alpha=0.6)
     plt.tight_layout()
-
-    # Save the figure to be used in your LaTeX document
-    plt.savefig("figure_centralization_parameter_map.png", dpi=300)
+    plt.savefig("figure_9_centralization_parameter_map.png", dpi=300)
     plt.show()
 
 
@@ -284,6 +333,7 @@ def analyze_digital_gold_narrative(data):
     Generates plots related to the 'digital gold' narrative:
     Drawdown Analysis (Figure 17) and Correlation Analysis (Figure 18).
     """
+    print("\nGenerating Figure 17: Bitcoin Price and Historical Drawdowns...")
     btc_price = data[TICKERS['Bitcoin']].dropna()
     previous_peaks = btc_price.cummax()
     drawdowns = (btc_price - previous_peaks) / previous_peaks
@@ -291,84 +341,125 @@ def analyze_digital_gold_narrative(data):
     fig_draw, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
     
     ax1.plot(btc_price.index, btc_price, label='Bitcoin Price (USD)', color='#3498db')
-    ax1.set_yscale('log')
-    ax1.set_title('Bitcoin Price and Historical Drawdowns (Figure 17)', fontsize=16)
-    ax1.set_ylabel('Price (USD, Log Scale)')
-    ax1.legend()
-    ax1.grid(True, which="both", ls="--", color="#555555")
+    ax1.set_yscale('log'); ax1.set_title('Bitcoin Price and Historical Drawdowns (Figure 17)', fontsize=16)
+    ax1.set_ylabel('Price (USD, Log Scale)'); ax1.legend(); ax1.grid(True, which="both", ls="--", color="#555555")
     
     ax2.plot(drawdowns.index, drawdowns * 100, label='Drawdown', color='#e74c3c')
     ax2.fill_between(drawdowns.index, drawdowns * 100, 0, color='#e74c3c', alpha=0.4)
-    ax2.set_ylabel('Drawdown (%)')
-    ax2.set_xlabel('Date')
-    
+    ax2.set_ylabel('Drawdown (%)'); ax2.set_xlabel('Date')
     max_dd = drawdowns.min() * 100
     ax2.text(drawdowns.idxmin(), max_dd, f'Max DD: {max_dd:.1f}%', ha='right', va='top', color='white', fontsize=10)
     
-    plt.tight_layout()
-    plt.savefig('figure_17_drawdowns.png', dpi=300)
-    plt.show()
+    plt.tight_layout(); plt.savefig('figure_17_drawdowns.png', dpi=300); plt.show()
     
-    sp500_ticker = TICKERS['S&P 500']
-    btc_ticker = TICKERS['Bitcoin']
-    
+    print("\nGenerating Figure 18: Bitcoin vs. S&P 500 Rolling Correlation...")
+    sp500_ticker = TICKERS['S&P 500']; btc_ticker = TICKERS['Bitcoin']
     log_returns = np.log(data[[btc_ticker, sp500_ticker]] / data[[btc_ticker, sp500_ticker]].shift(1)).dropna()
     rolling_corr = log_returns[btc_ticker].rolling(window=60).corr(log_returns[sp500_ticker])
     
     fig_corr, ax_corr = plt.subplots(figsize=(12, 6))
-    
-    # *** FIX APPLIED HERE: Used keyword argument `ax=` ***
     rolling_corr.plot(ax=ax_corr, color='#9b59b6')
-    
     ax_corr.set_title('60-Day Rolling Correlation: Bitcoin vs. S&P 500 (Figure 18)', fontsize=16)
-    ax_corr.set_ylabel('Pearson Correlation Coefficient')
-    ax_corr.axhline(0, color='white', linestyle='--', lw=1)
-    
+    ax_corr.set_ylabel('Pearson Correlation Coefficient'); ax_corr.axhline(0, color='white', linestyle='--', lw=1)
     peak_corr = rolling_corr.max()
     ax_corr.text(rolling_corr.idxmax(), peak_corr, f'Peak: {peak_corr:.2f}', ha='center', va='bottom', color='white', fontsize=10)
     
-    plt.tight_layout()
-    plt.savefig('figure_18_rolling_correlation.png', dpi=300)
-    plt.show()
+    plt.tight_layout(); plt.savefig('figure_18_rolling_correlation.png', dpi=300); plt.show()
 
 
-# --- 4. SCRIPT EXECUTION ---
+# --- 4. MAIN MENU AND SCRIPT EXECUTION ---
+
+def main_menu(full_data, volatility_data, data_loaded):
+    """Displays the main menu and handles user choices for figure generation."""
+
+    # Map choices to functions and their required data
+    # Format: 'choice': ('Description', function_name, required_data_name)
+    # required_data_name can be 'full', 'volatility', or None
+    menu_options = {
+        '1': ('Figure 2: Comparative Rolling Volatility', generate_volatility_comparison_chart, 'full'),
+        '2': ('Figures 3 & 4: VaR and GARCH Analysis', analyze_risk_and_garch, 'volatility'),
+        '3': ('Figure 5: Supply/Demand Model (Fixed vs. Elastic)', generate_supply_volatility_model_figure_dark, None),
+        '4': ('Figure 6: TPS Capacity Comparison', generate_tps_chart, None),
+        '5': ('Figure 9: LN Centralization Parameter Map', generate_centralization_parameter_map, None),
+        '6': ('Figures 17 & 18: Drawdown and Correlation Analysis', analyze_digital_gold_narrative, 'full'),
+        '7': ('Run All Figures', 'run_all', None),
+        '0': ('Exit', 'exit', None),
+    }
+
+    def run_all_figures():
+        """Helper function to execute all figure generations sequentially."""
+        print("\n--- RUNNING ALL FIGURES ---")
+        for choice in sorted(menu_options.keys()):
+            if menu_options[choice][1] not in ['run_all', 'exit']:
+                # Call the figure generation logic for each item
+                execute_choice(choice)
+        print("\n--- ALL FIGURES GENERATED ---")
+
+    def execute_choice(choice):
+        """Executes the function corresponding to the user's choice."""
+        description, func, data_needed = menu_options[choice]
+
+        if data_needed and not data_loaded:
+            print(f"\nERROR: Cannot generate '{description}'. Market data failed to load.")
+            return
+
+        # Pass the correct dataset to the function
+        if data_needed == 'full':
+            func(full_data)
+        elif data_needed == 'volatility':
+            if volatility_data.empty:
+                print("\nERROR: Volatility data slice is empty. Cannot generate VaR/GARCH plots.")
+            else:
+                func(volatility_data)
+        else: # No data needed
+            func()
+
+    while True:
+        print("\n" + "="*50)
+        print("    REPRODUCIBLE ANALYSIS SCRIPT - MAIN MENU")
+        print("="*50)
+        for key, (desc, _, _) in menu_options.items():
+            print(f"  [{key}] {desc}")
+        print("-"*50)
+
+        choice = input("Enter your choice: ").strip()
+
+        if choice == '0':
+            print("Exiting program.")
+            break
+        elif choice == '7':
+            run_all_figures()
+        elif choice in menu_options:
+            execute_choice(choice)
+        else:
+            print("Invalid choice. Please try again.")
+        
+        if choice in menu_options and choice != '0':
+            input("\nPress Enter to return to the main menu...")
+
 
 if __name__ == '__main__':
     effective_end_date = datetime.datetime.now().strftime('%Y-%m-%d')
     print(f"Starting analysis for paper dated: {FINAL_ANALYSIS_DATE}")
 
-    # Check if we need to fetch data
+    # --- Step 1: Load Data ---
     try:
         full_data = get_data(start_date=FULL_START_DATE, end_date=effective_end_date, cache_filename=CACHE_FILENAME)
         data_loaded = True
+        print("Market data loaded successfully.")
     except (ConnectionError, ValueError) as e:
         print(f"\nCRITICAL ERROR: Could not load data. {e}")
-        print("Skipping data-driven visualizations.")
+        print("Data-driven visualizations will be unavailable.")
         full_data = pd.DataFrame()
         data_loaded = False
 
-    # --- Generate Non-Data-Driven (Theoretical) Figures ---
-    print("\n--- Generating Theoretical and Static Figures ---")
-    generate_tps_chart() # Figure 6 (Static data)
-    generate_centralization_parameter_map() # Figure 9 (Theoretical model)
-
-    # --- Generate Data-Driven Figures ---
+    # --- Step 2: Prepare Data Slices ---
+    volatility_data = pd.DataFrame()
     if data_loaded and not full_data.empty:
         if pd.to_datetime(START_DATE_VOLATILITY) <= full_data.index.max():
             volatility_data = full_data.loc[START_DATE_VOLATILITY:]
         else:
-            volatility_data = pd.DataFrame() 
+            print("\nWARNING: Not enough data to create volatility slice. VaR/GARCH plots will be unavailable.")
 
-        if volatility_data.empty:
-            print("\nERROR: Volatility data frame is empty after slicing. Cannot proceed with VaR/GARCH.")
-        else:
-            print("\n--- Generating Data-Driven Figures ---")
-            generate_volatility_comparison_chart(full_data) # Figure 2
-            analyze_risk_and_garch(volatility_data) # Figures 3 & 4
-            analyze_digital_gold_narrative(full_data) # Figures 17 & 18
-            
-            print("\nAll data-driven figures have been generated and saved to the current directory.")
-            print("Note: GARCH parameters and Volatility Persistence/Half-Life are printed above.")
-    elif data_loaded:
-        print("\nERROR: Main data frame is empty after loading. Cannot proceed with data-driven analysis.")
+    # --- Step 3: Launch Main Menu ---
+    main_menu(full_data, volatility_data, data_loaded)
