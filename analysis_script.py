@@ -8,9 +8,9 @@
 #
 # Description: This script reproduces the core quantitative analyses and
 #              visualizations for the research paper, including Figures 2, 3, 4,
-#              5, 6, 9, 17, 18, and 20. It ensures full reproducibility for
+#              5, 6, 9, 17, 18, 20, and 22. It ensures full reproducibility for
 #              data-driven plots via a static data file.
-# Version:    6.0 (Final - Added Figure 20 and interactive user menu)
+# Version:    7.0 (Final - Added Figure 22 and refactored menu)
 # ==============================================================================
 
 import pandas as pd
@@ -449,15 +449,130 @@ def generate_oceanic_games_model():
     plt.savefig('figure_20_centralization_incentive.png', dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor())
     plt.show()
 
+def generate_security_budget_dilemma_chart():
+    """
+    Reproduces Figure 22: A model of the Bitcoin Security Budget Dilemma.
+    This chart is conceptual and does not use external market data.
+    """
+    print("\nGenerating Figure 22: Bitcoin Security Budget Dilemma...")
+
+    # --- 1. Setup the Plot Figure using global dark theme ---
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # Define colors compatible with the dark theme
+    color_blue = '#56B4E9' # A brighter blue
+    color_red = '#D55E00'  # A brighter orange-red
+
+    # --- 2. Define Conceptual Data Points ---
+    # X-axis represents time points for events
+    x_events = {
+        "Present": 0,
+        "2028 Halving": 1.5,
+        "2032 Halving": 3.0,
+        "...Post-Subsidy Era": 4.5
+    }
+    x_ticks = list(x_events.values())
+    x_labels = list(x_events.keys())
+
+    # Y-axis represents qualitative security budget levels
+    y_levels = {
+        "Vulnerable": 0,
+        "Low": 1,
+        "Medium": 2,
+        "High": 3
+    }
+    y_ticks = list(y_levels.values())
+    y_labels = list(y_levels.keys())
+
+    # Data for the BLUE dashed line (Block Subsidy / Scenario A outcome)
+    x_subsidy = [0, 1.5, 1.5, 3.0, 3.0, 4.5, 4.5, 5.5]
+    y_subsidy = [3, 3,   2,   2,   1,   1,   0.4, 0.2]
+
+    # Data for the RED solid line (Total Security in Scenario B)
+    x_l1_retention = [0, 1.5, 1.5, 5.5]
+    y_l1_retention = [3, 3,   2.8, 2.5]
+
+    # --- 3. Plot the Data Series ---
+
+    # Plot Scenario A (Blue Dashed Line)
+    ax.plot(x_subsidy, y_subsidy, 
+            linestyle='--', 
+            color=color_blue,
+            lw=2.5, 
+            label='Scenario A: High L2 Adoption')
+
+    # Plot Scenario B (Red Solid Line)
+    ax.plot(x_l1_retention, y_l1_retention, 
+            linestyle='-', 
+            color=color_red,
+            lw=2.5,
+            label='Scenario B: L1 Retention')
+
+    # --- 4. Customize Axes, Ticks, and Labels ---
+
+    ax.set_xlabel("Time", fontsize=14, labelpad=10)
+    ax.set_ylabel("Security Budget", fontsize=14, labelpad=10)
+
+    ax.set_xticks(x_ticks)
+    ax.set_xticklabels(x_labels, fontsize=12)
+    ax.set_yticks(y_ticks)
+    ax.set_yticklabels(y_labels, fontsize=12)
+
+    ax.set_xlim(-0.2, 5.7)
+    ax.set_ylim(-0.2, 3.5)
+
+    # Spines are handled by the global dark theme, but we can ensure top/right are off
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    # --- 5. Add Annotations and Legend ---
+
+    ax.annotate(
+        'Requires Prohibitively High\nTransaction Fees',
+        xy=(2.25, 2.75),
+        xytext=(2.5, 3.1),
+        fontsize=11,
+        color=color_red,
+        ha='left',
+        arrowprops=dict(facecolor=color_red, shrink=0.05, width=1, headwidth=6, edgecolor='none')
+    )
+
+    ax.annotate(
+        'Transaction Fees',
+        xy=(4.0, 2.55),
+        xytext=(4.0, 1.5),
+        fontsize=11,
+        ha='center',
+        va='center',
+        arrowprops=dict(
+            arrowstyle='<->',
+            lw=1.5,
+            color='white', # Changed from black to white for visibility
+            shrinkA=5,
+            shrinkB=5
+        )
+    )
+
+    blue_patch = mpatches.Patch(color=color_blue, label='Scenario A: High L2 Adoption')
+    red_patch = mpatches.Patch(color=color_red, label='Scenario B: L1 Retention')
+    ax.legend(handles=[blue_patch, red_patch], loc='upper right', fontsize=12, frameon=True)
+
+    # --- 6. Add Title ---
+
+    ax.set_title("A Model of the Bitcoin Security Budget Dilemma", fontsize=16, pad=20, weight='bold')
+
+    # --- 7. Final Touches and Display ---
+
+    plt.tight_layout()
+    plt.savefig('figure_22_security_budget_dilemma.png', dpi=300)
+    plt.show()
+
 
 # --- 4. MAIN MENU AND SCRIPT EXECUTION ---
 
 def main_menu(full_data, volatility_data, data_loaded):
     """Displays the main menu and handles user choices for figure generation."""
 
-    # Map choices to functions and their required data
-    # Format: 'choice': ('Description', function_name, required_data_name)
-    # required_data_name can be 'full', 'volatility', or None
     menu_options = {
         '1': ('Figure 2: Comparative Rolling Volatility', generate_volatility_comparison_chart, 'full'),
         '2': ('Figures 3 & 4: VaR and GARCH Analysis', analyze_risk_and_garch, 'volatility'),
@@ -466,7 +581,8 @@ def main_menu(full_data, volatility_data, data_loaded):
         '5': ('Figure 9: LN Centralization Parameter Map', generate_centralization_parameter_map, None),
         '6': ('Figures 17 & 18: Drawdown and Correlation Analysis', analyze_digital_gold_narrative, 'full'),
         '7': ('Figure 20: Economic Incentive for Mining Centralization', generate_oceanic_games_model, None),
-        '8': ('Run All Figures', 'run_all', None),
+        '8': ('Figure 22: Bitcoin Security Budget Dilemma', generate_security_budget_dilemma_chart, None),
+        '9': ('Run All Figures', 'run_all', None),
         '0': ('Exit', 'exit', None),
     }
 
@@ -474,8 +590,8 @@ def main_menu(full_data, volatility_data, data_loaded):
         """Helper function to execute all figure generations sequentially."""
         print("\n--- RUNNING ALL FIGURES ---")
         for choice in sorted(menu_options.keys()):
+            # Ensure 'run_all' and 'exit' are not called in the loop
             if menu_options[choice][1] not in ['run_all', 'exit']:
-                # Call the figure generation logic for each item
                 execute_choice(choice)
         print("\n--- ALL FIGURES GENERATED ---")
 
@@ -511,10 +627,12 @@ def main_menu(full_data, volatility_data, data_loaded):
         if choice == '0':
             print("Exiting program.")
             break
-        elif choice == '8':
-            run_all_figures()
         elif choice in menu_options:
-            execute_choice(choice)
+            # Handle special commands like 'run_all' first
+            if menu_options[choice][1] == 'run_all':
+                run_all_figures()
+            else:
+                execute_choice(choice)
         else:
             print("Invalid choice. Please try again.")
         
