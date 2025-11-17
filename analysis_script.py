@@ -8,9 +8,9 @@
 #
 # Description: This script reproduces the core quantitative analyses and
 #              visualizations for the research paper, including Figures 2, 3, 4,
-#              5, 6, 9, 17, and 18. It ensures full reproducibility for data-driven
-#              plots via a static data file.
-# Version:    5.0 (Final - Added interactive user menu)
+#              5, 6, 9, 17, 18, and 20. It ensures full reproducibility for
+#              data-driven plots via a static data file.
+# Version:    6.0 (Final - Added Figure 20 and interactive user menu)
 # ==============================================================================
 
 import pandas as pd
@@ -252,9 +252,9 @@ def generate_supply_volatility_model_figure_dark():
     q1,q2=6.0,3.0; ax2.plot([q1,q1],[0,p_s],c='#777',ls='--',lw=1.5,dashes=(6,4),zorder=1); ax2.plot([q2,q2],[0,p_s],c='#777',ls='--',lw=1.5,dashes=(6,4),zorder=1)
     ax2.plot(q1,p_s,'o',ms=11,c='#e74c3c',mec='white',mew=2.5,zorder=5); ax2.plot(q2,p_s,'o',ms=11,c='#f39c12',mec='white',mew=2.5,zorder=5)
     ax2.text(q1,p_s+0.6,'$E_1$',fontsize=12,weight='bold',ha='center',va='bottom'); ax2.text(q2,p_s+0.6,'$E_2$',fontsize=12,weight='bold',ha='center',va='bottom')
-    ax2.text(q1,-0.4,'$q_1$',ha='center',va='top',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
-    ax2.text(q2,-0.4,'$q_2$',ha='center',va='top',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
-    ax2.text(-0.4,p_s,'$p^*$',ha='right',va='center',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
+    ax2.text(q1,-0.4,'$q_1$',ha='center',va='top',fontsize=12,style='italic',weight='semibold',bbox=props)
+    ax2.text(q2,-0.4,'$q_2$',ha='center',va='top',fontsize=12,style='italic',weight='semibold',bbox=props)
+    ax2.text(-0.4,p_s,'$p^*$',ha='right',va='center',fontsize=12,style='italic',weight='semibold',bbox=props)
     ax2.plot([-1.3,-0.2],[p_s,p_s],'-',c='#2ecc71',lw=3,zorder=4); ax2.text(-1.5,p_s,'Price\nStability',ha='right',va='center',fontsize=11,style='italic',c='#2ecc71',weight='bold',bbox=dict(boxstyle='round,pad=0.4',facecolor='#102510',edgecolor='#2ecc71',alpha=0.95,lw=1.5))
     draw_bracket(ax2,q2,-1.3,q1,-1.3,'Supply\nAdjustment','horizontal',0.85,'#3498db',cap_inward=True); draw_bracket(ax2,bx+0.3,8.5-bx,bx+0.3,11.5-bx,'Demand\nShift','vertical',-0.8,'#bbb')
     
@@ -366,6 +366,89 @@ def analyze_digital_gold_narrative(data):
     
     plt.tight_layout(); plt.savefig('figure_18_rolling_correlation.png', dpi=300); plt.show()
 
+def generate_oceanic_games_model():
+    """
+    Reproduces Figure 20: Economic incentive for mining centralization from an
+    Oceanic Games model, adapted to a non-linear representation.
+    """
+    print("\nGenerating Figure 20: Economic Incentive for Mining Centralization...")
+
+    # --- 1. Define the Corrected, Non-Linear Conceptual Model ---
+    # The user correctly noted the relationship is non-linear. We will now use
+    # quadratic functions to model the curvature seen in the original paper's figure.
+    # This better represents the accelerating incentive to centralize.
+
+    def get_coalition_value_per_unit_nonlinear(r):
+        """
+        Models the increasing and convex (upward-curving) value for the coalition.
+        This shows that the strategic advantage accelerates as the coalition grows.
+        f(r) = a*r^2 + b*r + c
+        """
+        # Parameters are chosen to start at 1 and curve up to approx. 1.6 at r=40.
+        a = 0.00015  # Positive 'a' for upward (convex) curve
+        b = 0.01     # Initial positive slope
+        c = 1.0      # Starting value at r=0
+        return a * r**2 + b * r + c
+
+    def get_oceanic_value_per_unit_nonlinear(r):
+        """
+        Models the decreasing and concave (downward-curving) value for oceanic miners.
+        This shows their strategic position eroding at an accelerating rate.
+        f(r) = a*r^2 + b*r + c
+        """
+        # Parameters are chosen to start at 1 and curve down to approx. 0.6 at r=40.
+        a = -0.00015 # Negative 'a' for downward (concave) curve
+        b = -0.005   # Initial negative slope
+        c = 1.0      # Starting value at r=0
+        return a * r**2 + b * r + c
+
+    # --- 2. Generate Data for Plotting ---
+    # The x-axis represents the percentage of total hash rate controlled by the coalition.
+    r_crystallized = np.linspace(0, 40, 400)
+
+    # Calculate y-values using the new non-linear model functions.
+    v1_values = get_coalition_value_per_unit_nonlinear(r_crystallized)
+    voc_values = get_oceanic_value_per_unit_nonlinear(r_crystallized)
+
+    # --- 3. Create the Visualization ---
+    # Note: The global dark theme from the script's configuration is used automatically.
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Plot the coalition's value (v1) in red
+    ax.plot(r_crystallized, v1_values,
+            color='#d62728',
+            linewidth=2.5,
+            label=r'$v_1$ (Value for Coalition Members)')
+
+    # Plot the oceanic miners' value (voc) in blue
+    ax.plot(r_crystallized, voc_values,
+            color='#1f77b4',
+            linewidth=2.5,
+            label=r'$v_{oc}$ (Value for Oceanic Miners)')
+
+    # --- 4. Style and Format the Plot ---
+    ax.set_xlabel('Percentage of Total Hash Rate in New Coalition ($r_1$)', fontsize=12)
+    ax.set_ylabel('Strategic Value Per Unit of Hash Rate', fontsize=12)
+    ax.set_title('Economic Incentive for Mining Centralization (Figure 20)', fontsize=14, weight='bold')
+
+    # Set axis limits
+    ax.set_xlim(0, 40)
+    ax.set_ylim(0.5, 1.7)
+
+    # Add a legend
+    legend = ax.legend(fontsize=11, title="Value per Unit of Resource")
+    legend.get_title().set_fontweight('bold')
+
+    # Improve tick label appearance
+    ax.tick_params(axis='both', which='major', labelsize=10)
+
+    # Display the plot
+    plt.tight_layout()
+
+    # --- 5. Save the Figure ---
+    plt.savefig('figure_20_centralization_incentive.png', dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor())
+    plt.show()
+
 
 # --- 4. MAIN MENU AND SCRIPT EXECUTION ---
 
@@ -382,7 +465,8 @@ def main_menu(full_data, volatility_data, data_loaded):
         '4': ('Figure 6: TPS Capacity Comparison', generate_tps_chart, None),
         '5': ('Figure 9: LN Centralization Parameter Map', generate_centralization_parameter_map, None),
         '6': ('Figures 17 & 18: Drawdown and Correlation Analysis', analyze_digital_gold_narrative, 'full'),
-        '7': ('Run All Figures', 'run_all', None),
+        '7': ('Figure 20: Economic Incentive for Mining Centralization', generate_oceanic_games_model, None),
+        '8': ('Run All Figures', 'run_all', None),
         '0': ('Exit', 'exit', None),
     }
 
@@ -427,7 +511,7 @@ def main_menu(full_data, volatility_data, data_loaded):
         if choice == '0':
             print("Exiting program.")
             break
-        elif choice == '7':
+        elif choice == '8':
             run_all_figures()
         elif choice in menu_options:
             execute_choice(choice)
