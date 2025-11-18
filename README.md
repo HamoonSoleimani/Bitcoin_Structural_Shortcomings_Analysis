@@ -8,7 +8,7 @@ Repository for the code and data supporting the research paper:
 **"An Examination of Bitcoin's Structural Shortcomings as Money: A Synthesis of Economic and Technical Critiques"**
 
 **Author:** Hamoon Soleimani  
-**Analysis Date:** November 13, 2025  
+**Analysis Date:** November 19, 2025  
 **Script Version:** 11.2
 
 ---
@@ -175,4 +175,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Last Updated:** November 13, 2025
+**Last Updated:** November 19, 2025
