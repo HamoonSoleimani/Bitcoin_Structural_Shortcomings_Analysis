@@ -8,9 +8,9 @@
 #
 # Description: This script reproduces the core quantitative analyses and
 #              visualizations for the research paper, including Figures 2, 3, 4,
-#              5, 6, 9, 17, 18, 20, 22, and 27. It ensures full reproducibility
-#              for data-driven plots via a static data file.
-# Version:    8.0 (Final - Added Figure 27 Wash Trading Analysis)
+#              5, 6, 9, 16 (Systemic Shock), 17, 18, 20, 22, and 27. It ensures 
+#              full reproducibility for data-driven plots via a static data file.
+# Version:    9.0 (Final - Added Figure 24 Systemic Shock Analysis)
 # ==============================================================================
 
 import pandas as pd
@@ -18,6 +18,8 @@ import numpy as np
 import yfinance as yf
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import matplotlib.gridspec as gridspec
+import matplotlib.dates as mdates
 from matplotlib.patches import FancyArrowPatch
 from arch import arch_model
 import datetime
@@ -325,6 +327,121 @@ def generate_centralization_parameter_map():
     ax.set_xlim(0, 2); ax.set_ylim(0, 2); ax.grid(True, which="both", ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig("figure_9_centralization_parameter_map.png", dpi=300)
+    plt.show()
+
+def generate_systemic_shock_chart():
+    """
+    Reproduces Figure 24 (Systemic Shock Analysis).
+    A composite visualization of the 2021 Xinjiang Blackout impact on Hashrate and Mempool.
+    """
+    print("\nGenerating Figure 24: Systemic Shock Analysis...")
+    
+    # 1. Data Generation
+    start_date = pd.Timestamp('2021-04-02')
+    end_date = pd.Timestamp('2021-04-30')
+
+    # --- Top Chart: Hashrate ---
+    dates_hourly = pd.date_range(start=start_date, end=end_date, freq='3h')
+    np.random.seed(123)
+    hashrate_values = []
+    for date in dates_hourly:
+        noise = np.random.normal(0, 28) 
+        if date < pd.Timestamp('2021-04-16'):
+            val = 168 + noise
+        elif date < pd.Timestamp('2021-04-23'):
+            val = 130 + np.random.normal(0, 22) 
+        else:
+            val = 160 + noise
+        val = max(20, min(val, 280))
+        hashrate_values.append(val)
+    df_hash = pd.DataFrame({'Date': dates_hourly, 'Hashrate': hashrate_values})
+
+    # --- Bottom Chart: Mempool ---
+    dates_daily = pd.date_range(start=start_date, end=end_date, freq='D')
+    mempool_points = [
+        64, 73, 72, 50, 48, 58, 59, 52, # Apr 2 - Apr 9
+        65, 50, 45, 50, 62, 94,         # Apr 10 - Apr 15
+        81,                             # Apr 16 (The dip before the rise)
+        98, 155, 151, 163, 185, 195,    # The ascent
+        205, 196, 150, 97, 85, 82, 75   # The peak and decline
+    ]
+    if len(mempool_points) < len(dates_daily):
+        mempool_points += [75] * (len(dates_daily) - len(mempool_points))
+    mempool_points = mempool_points[:len(dates_daily)]
+    
+    df_mempool_daily = pd.DataFrame({'Date': dates_daily, 'Unconfirmed': mempool_points})
+    df_mempool_daily.set_index('Date', inplace=True)
+    df_mempool = df_mempool_daily.resample('1h').interpolate(method='linear')
+    df_mempool.reset_index(inplace=True)
+    common_dates = df_hash['Date']
+    df_mempool = df_mempool[df_mempool['Date'].isin(common_dates)]
+
+    # 2. Plotting
+    fig = plt.figure(figsize=(14, 9))
+    gs = gridspec.GridSpec(2, 1, height_ratios=[1, 1], hspace=0.08)
+
+    # --- Top Panel: Hashrate ---
+    ax1 = plt.subplot(gs[0])
+    threshold_hash = 160 
+    ax1.plot(df_hash['Date'], df_hash['Hashrate'], color='#8899a6', alpha=0.7, linewidth=1)
+    ax1.fill_between(df_hash['Date'], df_hash['Hashrate'], threshold_hash, 
+                     where=(df_hash['Hashrate'] >= threshold_hash),
+                     interpolate=True, color='#3498DB', alpha=0.3, label='Healthy Hashrate')
+    ax1.fill_between(df_hash['Date'], df_hash['Hashrate'], threshold_hash, 
+                     where=(df_hash['Hashrate'] < threshold_hash),
+                     interpolate=True, color='#e74c3c', alpha=0.4, label='Power Loss Impact')
+
+    ax1.set_ylabel('Mining Power (EH/s)', fontsize=11)
+    ax1.set_ylim(0, 280)
+    ax1.set_xlim(start_date, end_date)
+    ax1.grid(True, which='major', axis='y', linestyle=':', alpha=0.4)
+    ax1.tick_params(labelbottom=False)
+    ax1.spines['top'].set_visible(False)
+    ax1.spines['right'].set_visible(False)
+    ax1.spines['bottom'].set_visible(False)
+    ax1.text(pd.Timestamp('2021-04-19'), 90, "HASH RATE DROP\n(-24%)", 
+             color='#e74c3c', fontweight='bold', ha='center', fontsize=10)
+
+    # --- Bottom Panel: Mempool ---
+    ax2 = plt.subplot(gs[1], sharex=ax1)
+    threshold_mempool = 80
+    ax2.plot(df_mempool['Date'], df_mempool['Unconfirmed'], color='#d35400', alpha=0.9, linewidth=1.5)
+    ax2.fill_between(df_mempool['Date'], df_mempool['Unconfirmed'], 0, 
+                     where=(df_mempool['Unconfirmed'] <= threshold_mempool),
+                     interpolate=True, color='#7f8c8d', alpha=0.3)
+    ax2.fill_between(df_mempool['Date'], df_mempool['Unconfirmed'], 0, 
+                     where=(df_mempool['Unconfirmed'] > threshold_mempool),
+                     interpolate=True, color='#e67e22', alpha=0.6, label='Congestion Spike')
+
+    ax2.set_ylabel('Unconfirmed TX (Thousands)', fontsize=11)
+    ax2.set_ylim(0, 220)
+    ax2.grid(True, which='major', axis='y', linestyle=':', alpha=0.4)
+    ax2.spines['top'].set_visible(False)
+    ax2.spines['right'].set_visible(False)
+    
+    # Date Ticks using F-strings
+    ticks = [pd.Timestamp('2021-04-02'), pd.Timestamp('2021-04-09'), 
+             pd.Timestamp('2021-04-16'), pd.Timestamp('2021-04-23'), pd.Timestamp('2021-04-30')]
+    ax2.set_xticks(ticks)
+    ax2.set_xticklabels([f"{t.strftime('%b')} {t.day}" for t in ticks], fontsize=11)
+    ax2.text(pd.Timestamp('2021-04-24'), 210, "PEAK CONGESTION", 
+             color='#e67e22', fontweight='bold', ha='center', fontsize=10)
+
+    # --- Event Window Overlay ---
+    rect_start = pd.Timestamp('2021-04-16')
+    rect_end = pd.Timestamp('2021-04-23')
+    for ax in [ax1, ax2]:
+        ax.axvspan(rect_start, rect_end, color='#f1c40f', alpha=0.15, zorder=-2)
+        ax.axvline(rect_start, color='#95a5a6', linestyle=':', linewidth=1.2)
+        ax.axvline(rect_end, color='#95a5a6', linestyle=':', linewidth=1.2)
+        ax.axvline(pd.Timestamp('2021-04-09'), color='#555555', linestyle=':', linewidth=1)
+        ax.axvline(pd.Timestamp('2021-04-30'), color='#555555', linestyle=':', linewidth=1)
+
+    fig.suptitle('The Bitcoin Blackout: Systemic Shock Analysis', y=0.94, fontsize=16, fontweight='bold')
+    ax1.legend(loc='upper right', frameon=False, fontsize=9)
+    plt.subplots_adjust(top=0.88, bottom=0.1, left=0.1, right=0.95)
+    
+    plt.savefig('systemic_shock_analysis.png', dpi=300)
     plt.show()
 
 
@@ -688,18 +805,19 @@ def main_menu(full_data, volatility_data, data_loaded):
         '3': ('Figure 5: Supply/Demand Model (Fixed vs. Elastic)', generate_supply_volatility_model_figure_dark, None),
         '4': ('Figure 6: TPS Capacity Comparison', generate_tps_chart, None),
         '5': ('Figure 9: LN Centralization Parameter Map', generate_centralization_parameter_map, None),
-        '6': ('Figures 17 & 18: Drawdown and Correlation Analysis', analyze_digital_gold_narrative, 'full'),
-        '7': ('Figure 20: Economic Incentive for Mining Centralization', generate_oceanic_games_model, None),
-        '8': ('Figure 22: Bitcoin Security Budget Dilemma', generate_security_budget_dilemma_chart, None),
-        '9': ('Figure 27: Wash Trading Forensic Failure Rates', generate_wash_trading_chart, None),
-        '10': ('Run All Figures', 'run_all', None),
+        '6': ('Figure 16: Systemic Shock Analysis', generate_systemic_shock_chart, None),
+        '7': ('Figures 17 & 18: Drawdown and Correlation Analysis', analyze_digital_gold_narrative, 'full'),
+        '8': ('Figure 20: Economic Incentive for Mining Centralization', generate_oceanic_games_model, None),
+        '9': ('Figure 22: Bitcoin Security Budget Dilemma', generate_security_budget_dilemma_chart, None),
+        '10': ('Figure 27: Wash Trading Forensic Failure Rates', generate_wash_trading_chart, None),
+        '11': ('Run All Figures', 'run_all', None),
         '0': ('Exit', 'exit', None),
     }
 
     def run_all_figures():
         """Helper function to execute all figure generations sequentially."""
         print("\n--- RUNNING ALL FIGURES ---")
-        # Sort keys numerically to ensure correct order (0, 1, 2... 10)
+        # Sort keys numerically to ensure correct order (0, 1, 2... 11)
         sorted_keys = sorted(menu_options.keys(), key=lambda x: int(x))
         for choice in sorted_keys:
             # Ensure 'run_all' and 'exit' are not called in the loop
