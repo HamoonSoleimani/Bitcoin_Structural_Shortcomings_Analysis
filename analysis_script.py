@@ -199,6 +199,7 @@ def analyze_risk_and_garch(data):
 def generate_supply_volatility_model_figure_dark():
     """
     Reproduces Figure 5: A theoretical model comparing fixed vs. elastic supply.
+    FIXED: Resolved NameError by replacing undefined 'props' with 'bbox_props'.
     """
     print("\nGenerating Figure 5: Supply/Demand Model...")
     fig = plt.figure(figsize=(18, 9), dpi=150)
@@ -241,7 +242,10 @@ def generate_supply_volatility_model_figure_dark():
     p1,p2=6.0,3.0; ax1.plot([0,q_s],[p1,p1],c='#777',ls='--',lw=1.5,dashes=(6,4),zorder=1); ax1.plot([0,q_s],[p2,p2],c='#777',ls='--',lw=1.5,dashes=(6,4),zorder=1)
     ax1.plot(q_s,p1,'o',ms=11,c='#e74c3c',mec='white',mew=2.5,zorder=5); ax1.plot(q_s,p2,'o',ms=11,c='#f39c12',mec='white',mew=2.5,zorder=5)
     ax1.text(q_s+0.6, p1, '$E_1$', fontsize=12, weight='bold'); ax1.text(q_s+0.6, p2, '$E_2$', fontsize=12, weight='bold')
+    
+    # Define the styling for the text boxes (This was defined here, but incorrectly referenced as 'props' later)
     bbox_props = dict(boxstyle='round,pad=0.25',facecolor='black',edgecolor='#777',lw=0.8)
+    
     ax1.text(-0.4,p1,'$p_1$',ha='right',va='center',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
     ax1.text(-0.4,p2,'$p_2$',ha='right',va='center',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
     ax1.text(q_s,-0.4,'$q^*$',ha='center',va='top',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
@@ -257,9 +261,11 @@ def generate_supply_volatility_model_figure_dark():
     q1,q2=6.0,3.0; ax2.plot([q1,q1],[0,p_s],c='#777',ls='--',lw=1.5,dashes=(6,4),zorder=1); ax2.plot([q2,q2],[0,p_s],c='#777',ls='--',lw=1.5,dashes=(6,4),zorder=1)
     ax2.plot(q1,p_s,'o',ms=11,c='#e74c3c',mec='white',mew=2.5,zorder=5); ax2.plot(q2,p_s,'o',ms=11,c='#f39c12',mec='white',mew=2.5,zorder=5)
     ax2.text(q1,p_s+0.6,'$E_1$',fontsize=12,weight='bold',ha='center',va='bottom'); ax2.text(q2,p_s+0.6,'$E_2$',fontsize=12,weight='bold',ha='center',va='bottom')
-    ax2.text(q1,-0.4,'$q_1$',ha='center',va='top',fontsize=12,style='italic',weight='semibold',bbox=props)
-    ax2.text(q2,-0.4,'$q_2$',ha='center',va='top',fontsize=12,style='italic',weight='semibold',bbox=props)
-    ax2.text(-0.4,p_s,'$p^*$',ha='right',va='center',fontsize=12,style='italic',weight='semibold',bbox=props)
+    
+    ax2.text(q1,-0.4,'$q_1$',ha='center',va='top',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
+    ax2.text(q2,-0.4,'$q_2$',ha='center',va='top',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
+    ax2.text(-0.4,p_s,'$p^*$',ha='right',va='center',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
+    
     ax2.plot([-1.3,-0.2],[p_s,p_s],'-',c='#2ecc71',lw=3,zorder=4); ax2.text(-1.5,p_s,'Price\nStability',ha='right',va='center',fontsize=11,style='italic',c='#2ecc71',weight='bold',bbox=dict(boxstyle='round,pad=0.4',facecolor='#102510',edgecolor='#2ecc71',alpha=0.95,lw=1.5))
     draw_bracket(ax2,q2,-1.3,q1,-1.3,'Supply\nAdjustment','horizontal',0.85,'#3498db',cap_inward=True); draw_bracket(ax2,bx+0.3,8.5-bx,bx+0.3,11.5-bx,'Demand\nShift','vertical',-0.8,'#bbb')
     
