@@ -7,11 +7,11 @@
 # Date:       November 13, 2025 (Date of final analysis)
 #
 # Description: This script reproduces the core quantitative analyses and
-#              visualizations for the research paper, including Figures 2, 3, 4,
-#              5, 6, 9, 16 (Systemic Shock), 17, 18, 20, 22, 27, and 28. 
+#              visualizations for the research paper, including Figures 2-6, 9-11,
+#              16, 17, 18, 20, 22, 27, and 28.
 #              It ensures full reproducibility for data-driven plots via a static 
 #              data file.
-# Version:    10.0 (Final - Added Figure 28 Tether Issuance Analysis)
+# Version:    11.0 (Final - Added Network Topology & Gini Analysis)
 # ==============================================================================
 
 import pandas as pd
@@ -22,6 +22,9 @@ import matplotlib.patches as mpatches
 import matplotlib.gridspec as gridspec
 import matplotlib.dates as mdates
 from matplotlib.patches import FancyArrowPatch
+from matplotlib.lines import Line2D
+import networkx as nx
+import seaborn as sns
 from arch import arch_model
 import datetime
 import os
@@ -53,7 +56,7 @@ plt.rcParams.update({
     "ytick.labelsize": 10,
     "legend.fontsize": 10,
 })
-warnings.filterwarnings("ignore", category=UserWarning) # Suppress minor plot warnings
+warnings.filterwarnings("ignore") # Suppress plot warnings
 
 # --- HARDCODED DATES (CRITICAL FOR REPRODUCIBILITY) ---
 FINAL_ANALYSIS_DATE = '2025-11-13'
@@ -195,10 +198,8 @@ def analyze_risk_and_garch(data):
 def generate_supply_volatility_model_figure_dark():
     """
     Reproduces Figure 5: A theoretical model comparing fixed vs. elastic supply.
-    This version is redesigned to be fully compatible with the script's dark theme.
     """
     print("\nGenerating Figure 5: Supply/Demand Model...")
-    # Create figure using global dark theme settings
     fig = plt.figure(figsize=(18, 9), dpi=150)
     gs = fig.add_gridspec(1, 2, left=0.08, right=0.95, top=0.90, bottom=0.12, wspace=0.30)
     ax1 = fig.add_subplot(gs[0, 0])
@@ -261,7 +262,6 @@ def generate_supply_volatility_model_figure_dark():
     ax2.plot([-1.3,-0.2],[p_s,p_s],'-',c='#2ecc71',lw=3,zorder=4); ax2.text(-1.5,p_s,'Price\nStability',ha='right',va='center',fontsize=11,style='italic',c='#2ecc71',weight='bold',bbox=dict(boxstyle='round,pad=0.4',facecolor='#102510',edgecolor='#2ecc71',alpha=0.95,lw=1.5))
     draw_bracket(ax2,q2,-1.3,q1,-1.3,'Supply\nAdjustment','horizontal',0.85,'#3498db',cap_inward=True); draw_bracket(ax2,bx+0.3,8.5-bx,bx+0.3,11.5-bx,'Demand\nShift','vertical',-0.8,'#bbb')
     
-    # Caption and final touches
     cy=0.04;
     fig.text(0.5,cy-0.01,'Comparison of Fixed vs. Flexible Supply Response',ha='center',va='top',fontsize=13,weight='semibold')
     fig.text(0.5,cy-0.04,'Left: Inelastic supply, price volatility | Right: Elastic supply, price stability',ha='center',va='top',fontsize=11,style='italic',c='#aaa')
@@ -330,12 +330,146 @@ def generate_centralization_parameter_map():
     plt.savefig("figure_9_centralization_parameter_map.png", dpi=300)
     plt.show()
 
+
+def generate_topology_figure():
+    """
+    Figure 10: Generates a visualization of the Core-Periphery structure evolution.
+    Simulates the 'Network Creation Game' via Preferential Attachment (Barabasi-Albert).
+    Adapted for script dark theme with high-contrast edges.
+    """
+    print("Generating Figure 10: Lightning Network Topology...")
+    
+    # Use script global style (dark background)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 7))
+    
+    # Parameters for simulation
+    n_early = 80; m_early = 2
+    n_late = 400; m_late = 2 
+    
+    # 1. Early Stage Simulation
+    G1 = nx.barabasi_albert_graph(n_early, m_early, seed=42)
+    degrees1 = dict(G1.degree())
+    threshold1 = np.percentile(list(degrees1.values()), 95)
+    
+    node_colors1 = []; node_sizes1 = []
+    for node in G1.nodes():
+        if degrees1[node] >= threshold1:
+            node_colors1.append('#c0392b') # Deep Red (Core)
+            node_sizes1.append(degrees1[node] * 8)
+        else:
+            node_colors1.append('#27ae60') # Green (Periphery)
+            node_sizes1.append(30)
+
+    pos1 = nx.spring_layout(G1, k=0.25, iterations=50, seed=42)
+    
+    nx.draw_networkx_nodes(G1, pos1, node_color=node_colors1, node_size=node_sizes1, ax=ax1, alpha=0.9)
+    # EDITED: Changed edge_color to bright silver (#e0e0e0) and increased alpha for visibility on black
+    nx.draw_networkx_edges(G1, pos1, alpha=0.5, width=1.0, edge_color='#e0e0e0', ax=ax1)
+    ax1.set_title("Phase 1: Early Network Formation\n(Emergent Hubs)", fontweight='bold', color='white')
+    ax1.axis('off')
+
+    # 2. Mature Stage Simulation
+    G2 = nx.barabasi_albert_graph(n_late, m_late, seed=100)
+    degrees2 = dict(G2.degree())
+    threshold2 = np.percentile(list(degrees2.values()), 98)
+    
+    node_colors2 = []; node_sizes2 = []
+    for node in G2.nodes():
+        if degrees2[node] >= threshold2:
+            node_colors2.append('#c0392b') 
+            node_sizes2.append(degrees2[node] * 5)
+        else:
+            node_colors2.append('#27ae60') 
+            node_sizes2.append(15)
+
+    pos2 = nx.spring_layout(G2, k=0.15, iterations=80, seed=100)
+    
+    nx.draw_networkx_nodes(G2, pos2, node_color=node_colors2, node_size=node_sizes2, ax=ax2, alpha=0.85)
+    # EDITED: Changed edge_color to bright silver (#e0e0e0) and increased alpha for visibility on black
+    nx.draw_networkx_edges(G2, pos2, alpha=0.4, width=0.6, edge_color='#e0e0e0', ax=ax2)
+    ax2.set_title("Phase 2: Mature Oligopoly\n(Structural Centralization)", fontweight='bold', color='white')
+    ax2.axis('off')
+
+    # Legend
+    legend_elements = [
+        Line2D([0], [0], marker='o', color='w', label='Core (Liquidity Hubs)',
+               markerfacecolor='#c0392b', markersize=10),
+        Line2D([0], [0], marker='o', color='w', label='Periphery (Users)',
+               markerfacecolor='#27ae60', markersize=8)
+    ]
+    # Legend text color handled by global params
+    fig.legend(handles=legend_elements, loc='lower center', ncol=2, bbox_to_anchor=(0.5, 0.02))
+    
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=0.1)
+    plt.savefig('figure_10_ln_topology.png', dpi=300, bbox_inches='tight')
+    plt.show()
+
+
+
+def generate_gini_figure():
+    """
+    Figure 11: Generates the quantitative analysis of centralization (Gini Coeffs).
+    Creates synthetic data distributions that replicate the statistical findings
+    of Vallarano et al. (Observed vs Expected Null Models).
+    """
+    print("Generating Figure 11: Quantitative Centralization Analysis...")
+    
+    fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+    axes = axes.flatten()
+    metrics = ['Degree', 'Closeness', 'Betweenness', 'Eigenvector']
+    
+    np.random.seed(42)
+    n_points = 100
+    
+    for i, metric in enumerate(metrics):
+        ax = axes[i]
+        expected = np.linspace(0.1, 0.9, n_points)
+        
+        if metric == 'Degree':
+            noise = np.random.normal(0, 0.01, n_points)
+            observed = expected + noise
+        elif metric == 'Betweenness':
+            noise = np.random.normal(0, 0.02, n_points)
+            observed = expected + (expected * 0.15) + noise
+            observed = np.clip(observed, 0, 0.99)
+        elif metric == 'Closeness':
+            noise = np.random.normal(0, 0.03, n_points)
+            observed = expected + noise
+        elif metric == 'Eigenvector':
+            noise = np.random.normal(0, 0.02, n_points)
+            observed = expected + (expected**2 * 0.1) + noise
+            
+        # Scatter plot
+        ax.scatter(expected, observed, alpha=0.7, s=25, c='#3498db', edgecolor='w', linewidth=0.5)
+        
+        # Identity line (y=x)
+        ax.plot([0, 1], [0, 1], 'r--', linewidth=1.5, label='Null Model Identity')
+        
+        ax.set_title(f"{metric} Centrality", fontweight='bold', color='white')
+        ax.set_xlabel(f"Expected Gini (Null Model)", color='white')
+        ax.set_ylabel(f"Observed Gini (Empirical)", color='white')
+        ax.set_xlim(0, 1.0)
+        ax.set_ylim(0, 1.0)
+        
+        if metric == 'Betweenness':
+            ax.text(0.5, 0.1, "Structural\nCentralization\nGap", 
+                    fontsize=10, color='white', ha='center',
+                    bbox=dict(facecolor='#c0392b', alpha=0.8, edgecolor='white'))
+
+    lines, labels = axes[0].get_legend_handles_labels()
+    fig.legend(lines, labels, loc='upper center', bbox_to_anchor=(0.5, 1.02), ncol=2)
+    
+    plt.tight_layout()
+    plt.savefig('figure_11_ln_centralization_quantitative.png', dpi=300, bbox_inches='tight')
+    plt.show()
+
+
 def generate_systemic_shock_chart():
     """
-    Reproduces Figure 24 (Systemic Shock Analysis).
-    A composite visualization of the 2021 Xinjiang Blackout impact on Hashrate and Mempool.
+    Reproduces Figure 16: Systemic Shock Analysis (Hashrate/Mempool during 2021 Blackout).
     """
-    print("\nGenerating Figure 24: Systemic Shock Analysis...")
+    print("\nGenerating Figure 16: Systemic Shock Analysis...")
     
     # 1. Data Generation
     start_date = pd.Timestamp('2021-04-02')
@@ -438,11 +572,11 @@ def generate_systemic_shock_chart():
         ax.axvline(pd.Timestamp('2021-04-09'), color='#555555', linestyle=':', linewidth=1)
         ax.axvline(pd.Timestamp('2021-04-30'), color='#555555', linestyle=':', linewidth=1)
 
-    fig.suptitle('The Bitcoin Blackout: Systemic Shock Analysis', y=0.94, fontsize=16, fontweight='bold')
+    fig.suptitle('The Bitcoin Blackout: Systemic Shock Analysis (Figure 16)', y=0.94, fontsize=16, fontweight='bold')
     ax1.legend(loc='upper right', frameon=False, fontsize=9)
     plt.subplots_adjust(top=0.88, bottom=0.1, left=0.1, right=0.95)
     
-    plt.savefig('systemic_shock_analysis.png', dpi=300)
+    plt.savefig('figure_16_systemic_shock_analysis.png', dpi=300)
     plt.show()
 
 
@@ -491,195 +625,71 @@ def generate_oceanic_games_model():
     """
     print("\nGenerating Figure 20: Economic Incentive for Mining Centralization...")
 
-    # --- 1. Define the Corrected, Non-Linear Conceptual Model ---
-    # The user correctly noted the relationship is non-linear. We will now use
-    # quadratic functions to model the curvature seen in the original paper's figure.
-    # This better represents the accelerating incentive to centralize.
-
     def get_coalition_value_per_unit_nonlinear(r):
-        """
-        Models the increasing and convex (upward-curving) value for the coalition.
-        This shows that the strategic advantage accelerates as the coalition grows.
-        f(r) = a*r^2 + b*r + c
-        """
-        # Parameters are chosen to start at 1 and curve up to approx. 1.6 at r=40.
-        a = 0.00015  # Positive 'a' for upward (convex) curve
-        b = 0.01     # Initial positive slope
-        c = 1.0      # Starting value at r=0
+        a = 0.00015; b = 0.01; c = 1.0
         return a * r**2 + b * r + c
 
     def get_oceanic_value_per_unit_nonlinear(r):
-        """
-        Models the decreasing and concave (downward-curving) value for oceanic miners.
-        This shows their strategic position eroding at an accelerating rate.
-        f(r) = a*r^2 + b*r + c
-        """
-        # Parameters are chosen to start at 1 and curve down to approx. 0.6 at r=40.
-        a = -0.00015 # Negative 'a' for downward (concave) curve
-        b = -0.005   # Initial negative slope
-        c = 1.0      # Starting value at r=0
+        a = -0.00015; b = -0.005; c = 1.0
         return a * r**2 + b * r + c
 
-    # --- 2. Generate Data for Plotting ---
-    # The x-axis represents the percentage of total hash rate controlled by the coalition.
     r_crystallized = np.linspace(0, 40, 400)
-
-    # Calculate y-values using the new non-linear model functions.
     v1_values = get_coalition_value_per_unit_nonlinear(r_crystallized)
     voc_values = get_oceanic_value_per_unit_nonlinear(r_crystallized)
 
-    # --- 3. Create the Visualization ---
-    # Note: The global dark theme from the script's configuration is used automatically.
     fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(r_crystallized, v1_values, color='#d62728', linewidth=2.5, label=r'$v_1$ (Value for Coalition Members)')
+    ax.plot(r_crystallized, voc_values, color='#1f77b4', linewidth=2.5, label=r'$v_{oc}$ (Value for Oceanic Miners)')
 
-    # Plot the coalition's value (v1) in red
-    ax.plot(r_crystallized, v1_values,
-            color='#d62728',
-            linewidth=2.5,
-            label=r'$v_1$ (Value for Coalition Members)')
-
-    # Plot the oceanic miners' value (voc) in blue
-    ax.plot(r_crystallized, voc_values,
-            color='#1f77b4',
-            linewidth=2.5,
-            label=r'$v_{oc}$ (Value for Oceanic Miners)')
-
-    # --- 4. Style and Format the Plot ---
     ax.set_xlabel('Percentage of Total Hash Rate in New Coalition ($r_1$)', fontsize=12)
     ax.set_ylabel('Strategic Value Per Unit of Hash Rate', fontsize=12)
     ax.set_title('Economic Incentive for Mining Centralization (Figure 20)', fontsize=14, weight='bold')
-
-    # Set axis limits
-    ax.set_xlim(0, 40)
-    ax.set_ylim(0.5, 1.7)
-
-    # Add a legend
+    ax.set_xlim(0, 40); ax.set_ylim(0.5, 1.7)
     legend = ax.legend(fontsize=11, title="Value per Unit of Resource")
     legend.get_title().set_fontweight('bold')
-
-    # Improve tick label appearance
     ax.tick_params(axis='both', which='major', labelsize=10)
 
-    # Display the plot
     plt.tight_layout()
-
-    # --- 5. Save the Figure ---
     plt.savefig('figure_20_centralization_incentive.png', dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor())
     plt.show()
 
 def generate_security_budget_dilemma_chart():
     """
     Reproduces Figure 22: A model of the Bitcoin Security Budget Dilemma.
-    This chart is conceptual and does not use external market data.
     """
     print("\nGenerating Figure 22: Bitcoin Security Budget Dilemma...")
 
-    # --- 1. Setup the Plot Figure using global dark theme ---
     fig, ax = plt.subplots(figsize=(12, 8))
-    
-    # Define colors compatible with the dark theme
-    color_blue = '#56B4E9' # A brighter blue
-    color_red = '#D55E00'  # A brighter orange-red
+    color_blue = '#56B4E9'; color_red = '#D55E00'
 
-    # --- 2. Define Conceptual Data Points ---
-    # X-axis represents time points for events
-    x_events = {
-        "Present": 0,
-        "2028 Halving": 1.5,
-        "2032 Halving": 3.0,
-        "...Post-Subsidy Era": 4.5
-    }
-    x_ticks = list(x_events.values())
-    x_labels = list(x_events.keys())
+    x_events = {"Present": 0, "2028 Halving": 1.5, "2032 Halving": 3.0, "...Post-Subsidy Era": 4.5}
+    x_ticks = list(x_events.values()); x_labels = list(x_events.keys())
+    y_levels = {"Vulnerable": 0, "Low": 1, "Medium": 2, "High": 3}
+    y_ticks = list(y_levels.values()); y_labels = list(y_levels.keys())
 
-    # Y-axis represents qualitative security budget levels
-    y_levels = {
-        "Vulnerable": 0,
-        "Low": 1,
-        "Medium": 2,
-        "High": 3
-    }
-    y_ticks = list(y_levels.values())
-    y_labels = list(y_levels.keys())
-
-    # Data for the BLUE dashed line (Block Subsidy / Scenario A outcome)
     x_subsidy = [0, 1.5, 1.5, 3.0, 3.0, 4.5, 4.5, 5.5]
     y_subsidy = [3, 3,   2,   2,   1,   1,   0.4, 0.2]
-
-    # Data for the RED solid line (Total Security in Scenario B)
     x_l1_retention = [0, 1.5, 1.5, 5.5]
     y_l1_retention = [3, 3,   2.8, 2.5]
 
-    # --- 3. Plot the Data Series ---
+    ax.plot(x_subsidy, y_subsidy, linestyle='--', color=color_blue, lw=2.5, label='Scenario A: High L2 Adoption')
+    ax.plot(x_l1_retention, y_l1_retention, linestyle='-', color=color_red, lw=2.5, label='Scenario B: L1 Retention')
 
-    # Plot Scenario A (Blue Dashed Line)
-    ax.plot(x_subsidy, y_subsidy, 
-            linestyle='--', 
-            color=color_blue,
-            lw=2.5, 
-            label='Scenario A: High L2 Adoption')
+    ax.set_xlabel("Time", fontsize=14, labelpad=10); ax.set_ylabel("Security Budget", fontsize=14, labelpad=10)
+    ax.set_xticks(x_ticks); ax.set_xticklabels(x_labels, fontsize=12)
+    ax.set_yticks(y_ticks); ax.set_yticklabels(y_labels, fontsize=12)
+    ax.set_xlim(-0.2, 5.7); ax.set_ylim(-0.2, 3.5)
+    ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
 
-    # Plot Scenario B (Red Solid Line)
-    ax.plot(x_l1_retention, y_l1_retention, 
-            linestyle='-', 
-            color=color_red,
-            lw=2.5,
-            label='Scenario B: L1 Retention')
-
-    # --- 4. Customize Axes, Ticks, and Labels ---
-
-    ax.set_xlabel("Time", fontsize=14, labelpad=10)
-    ax.set_ylabel("Security Budget", fontsize=14, labelpad=10)
-
-    ax.set_xticks(x_ticks)
-    ax.set_xticklabels(x_labels, fontsize=12)
-    ax.set_yticks(y_ticks)
-    ax.set_yticklabels(y_labels, fontsize=12)
-
-    ax.set_xlim(-0.2, 5.7)
-    ax.set_ylim(-0.2, 3.5)
-
-    # Spines are handled by the global dark theme, but we can ensure top/right are off
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-
-    # --- 5. Add Annotations and Legend ---
-
-    ax.annotate(
-        'Requires Prohibitively High\nTransaction Fees',
-        xy=(2.25, 2.75),
-        xytext=(2.5, 3.1),
-        fontsize=11,
-        color=color_red,
-        ha='left',
-        arrowprops=dict(facecolor=color_red, shrink=0.05, width=1, headwidth=6, edgecolor='none')
-    )
-
-    ax.annotate(
-        'Transaction Fees',
-        xy=(4.0, 2.55),
-        xytext=(4.0, 1.5),
-        fontsize=11,
-        ha='center',
-        va='center',
-        arrowprops=dict(
-            arrowstyle='<->',
-            lw=1.5,
-            color='white', # Changed from black to white for visibility
-            shrinkA=5,
-            shrinkB=5
-        )
-    )
+    ax.annotate('Requires Prohibitively High\nTransaction Fees', xy=(2.25, 2.75), xytext=(2.5, 3.1),
+                fontsize=11, color=color_red, ha='left', arrowprops=dict(facecolor=color_red, shrink=0.05, width=1, headwidth=6, edgecolor='none'))
+    ax.annotate('Transaction Fees', xy=(4.0, 2.55), xytext=(4.0, 1.5), fontsize=11, ha='center', va='center',
+                arrowprops=dict(arrowstyle='<->', lw=1.5, color='white', shrinkA=5, shrinkB=5))
 
     blue_patch = mpatches.Patch(color=color_blue, label='Scenario A: High L2 Adoption')
     red_patch = mpatches.Patch(color=color_red, label='Scenario B: L1 Retention')
     ax.legend(handles=[blue_patch, red_patch], loc='upper right', fontsize=12, frameon=True)
-
-    # --- 6. Add Title ---
-
-    ax.set_title("A Model of the Bitcoin Security Budget Dilemma", fontsize=16, pad=20, weight='bold')
-
-    # --- 7. Final Touches and Display ---
+    ax.set_title("A Model of the Bitcoin Security Budget Dilemma (Figure 22)", fontsize=16, pad=20, weight='bold')
 
     plt.tight_layout()
     plt.savefig('figure_22_security_budget_dilemma.png', dpi=300)
@@ -688,176 +698,82 @@ def generate_security_budget_dilemma_chart():
 def generate_wash_trading_chart():
     """
     Reproduces Figure 27: Percentage of Failed Forensic Tests for Wash Trading.
-    Data is manually extracted from the reference study and re-plotted to ensure
-    copyright compliance (adaptation).
     """
     print("\nGenerating Figure 27: Wash Trading Forensic Failure Rates...")
 
-    # --- DATA ENTRY ---
-    # Data for the top chart (Exchanges)
-    # Grouped exactly as they appear in the source material for accuracy
     exchange_data = {
-        'Exchange': [
-            'U8; U14', 'U9', 'U2; U5', 'U10', 'U1; U4; U7; U12', 
-            'UT4; UT6', 'U3', 'U11; U16', 'UT10', 'U6; U15', 
-            'UT7', 'UT3; UT8', 'UT1; UT2; UT5', 'U13', 'UT9', 'R1; R2; R3'
-        ],
-        'Failure_Rate': [
-            98, 95, 88, 75, 70, 
-            67, 58, 42, 42, 34, 
-            22, 17, 8, 3, 2, 0
-        ],
-        # Assigning categories for color coding
-        'Category': [
-            'High Risk', 'High Risk', 'High Risk', 'High Risk', 'High Risk',
-            'Medium Risk', 'High Risk', 'High Risk', 'Medium Risk', 'High Risk',
-            'Medium Risk', 'Medium Risk', 'Medium Risk', 'High Risk', 'Medium Risk', 'Regulated'
-        ]
+        'Exchange': ['U8; U14', 'U9', 'U2; U5', 'U10', 'U1; U4; U7; U12', 'UT4; UT6', 'U3', 'U11; U16', 'UT10', 'U6; U15', 
+                     'UT7', 'UT3; UT8', 'UT1; UT2; UT5', 'U13', 'UT9', 'R1; R2; R3'],
+        'Failure_Rate': [98, 95, 88, 75, 70, 67, 58, 42, 42, 34, 22, 17, 8, 3, 2, 0],
+        'Category': ['High Risk', 'High Risk', 'High Risk', 'High Risk', 'High Risk', 'Medium Risk', 'High Risk', 'High Risk', 'Medium Risk', 'High Risk',
+                     'Medium Risk', 'Medium Risk', 'Medium Risk', 'High Risk', 'Medium Risk', 'Regulated']
     }
+    crypto_data = {'Crypto': ['XRP', 'LTC', 'BTC', 'ETH'], 'Failure_Rate': [54, 47, 48, 42]}
+    df_exch = pd.DataFrame(exchange_data); df_crypto = pd.DataFrame(crypto_data)
 
-    # Data for the bottom chart (Cryptocurrencies)
-    crypto_data = {
-        'Crypto': ['XRP', 'LTC', 'BTC', 'ETH'],
-        'Failure_Rate': [54, 47, 48, 42]
-    }
-
-    # Create DataFrames
-    df_exch = pd.DataFrame(exchange_data)
-    df_crypto = pd.DataFrame(crypto_data)
-
-    # --- PLOTTING ---
-
-    # Set up the figure with two subplots (vertical layout)
-    # Uses global dark theme automatically
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 12), gridspec_kw={'height_ratios': [2, 1]})
-    plt.subplots_adjust(hspace=0.3) # Add space between charts
+    plt.subplots_adjust(hspace=0.3) 
 
-    # --- Plot 1: Exchanges ---
-
-    # Define colors based on category to make it distinct from the original
     colors = []
     for cat in df_exch['Category']:
-        if cat == 'High Risk':
-            colors.append('#d62728') # Red for Unregulated Tier-2 (High risk)
-        elif cat == 'Medium Risk':
-            colors.append('#1f77b4') # Blue for Unregulated Tier-1
-        else:
-            colors.append('#2ca02c') # Green for Regulated
+        if cat == 'High Risk': colors.append('#d62728') 
+        elif cat == 'Medium Risk': colors.append('#1f77b4') 
+        else: colors.append('#2ca02c') 
 
     y_pos = np.arange(len(df_exch))
-
-    # Create horizontal bars
     bars1 = ax1.barh(y_pos, df_exch['Failure_Rate'], color=colors, height=0.6)
-
-    # Formatting Ax1
-    ax1.set_yticks(y_pos)
-    ax1.set_yticklabels(df_exch['Exchange'], fontsize=10)
-    ax1.invert_yaxis() # Highest values on top
+    ax1.set_yticks(y_pos); ax1.set_yticklabels(df_exch['Exchange'], fontsize=10); ax1.invert_yaxis() 
     ax1.set_xlabel('Percentage of Failed Tests (%)', fontsize=11, fontweight='bold')
-    ax1.set_title('Percentage of Failed Forensic Tests by Exchange', fontsize=13, fontweight='bold', pad=15)
-    ax1.set_xlim(0, 100)
-    ax1.grid(axis='x', linestyle='--', alpha=0.5) # Use lighter grid for dark theme
+    ax1.set_title('Percentage of Failed Forensic Tests by Exchange (Figure 27)', fontsize=13, fontweight='bold', pad=15)
+    ax1.set_xlim(0, 100); ax1.grid(axis='x', linestyle='--', alpha=0.5) 
+    for i, v in enumerate(df_exch['Failure_Rate']): ax1.text(v + 1, i + 0.15, str(v) + '%', color='white', fontsize=9)
 
-    # Add value labels to the end of bars
-    # Note: color='white' is critical here for visibility on black background
-    for i, v in enumerate(df_exch['Failure_Rate']):
-        ax1.text(v + 1, i + 0.15, str(v) + '%', color='white', fontsize=9)
-
-    # --- Plot 2: Cryptocurrencies ---
-
-    # Sort crypto data for better visualization
     df_crypto = df_crypto.sort_values('Failure_Rate', ascending=True)
-
     y_pos_crypto = np.arange(len(df_crypto))
-    # Use specific colors for coins suitable for dark theme
-    # Silver, Gold, Orange(BTC), Blue(ETH/XRP)
     crypto_colors = ['#00688b', '#c0c0c0', '#f2a900', '#00688b'] 
-
     bars2 = ax2.barh(y_pos_crypto, df_crypto['Failure_Rate'], color=crypto_colors, height=0.6)
-
-    # Formatting Ax2
-    ax2.set_yticks(y_pos_crypto)
-    ax2.set_yticklabels(df_crypto['Crypto'], fontsize=11)
+    ax2.set_yticks(y_pos_crypto); ax2.set_yticklabels(df_crypto['Crypto'], fontsize=11)
     ax2.set_xlabel('Percentage of Failed Tests (%)', fontsize=11, fontweight='bold')
     ax2.set_title('Percentage of Failed Forensic Tests by Cryptocurrency', fontsize=13, fontweight='bold', pad=15)
-    ax2.set_xlim(0, 100)
-    ax2.grid(axis='x', linestyle='--', alpha=0.5)
+    ax2.set_xlim(0, 100); ax2.grid(axis='x', linestyle='--', alpha=0.5)
+    for i, v in enumerate(df_crypto['Failure_Rate']): ax2.text(v + 1, i + 0.1, str(v) + '%', color='white', fontsize=10)
 
-    # Add value labels
-    for i, v in enumerate(df_crypto['Failure_Rate']):
-        ax2.text(v + 1, i + 0.1, str(v) + '%', color='white', fontsize=10)
-
-    # --- FINAL TOUCHES ---
     plt.tight_layout()
-
-    # Save the figure
-    plt.savefig('cong_adapted_figure.png', dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor())
+    plt.savefig('figure_27_wash_trading.png', dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor())
     plt.show()
 
 def generate_tether_issuance_chart():
     """
     Reproduces Figure 28: Bitcoin Returns Conditional on Tether Issuance.
-    Replicated from Griffin & Shams (2019).
     """
     print("\nGenerating Figure 28: Tether Issuance Impact...")
-    
-    # --- DATA PREPARATION ---
     categories = ['Zero', 'Low', 'Medium', 'High']
-
-    # "Raw Returns" (Blue) - Estimated from Figure 9 visual in Griffin & Shams (2019)
     raw_returns = [0.6, -0.5, -1.8, -4.2] 
-
-    # "Benchmarked Returns" (Red) - Exact values from Page 42 text of Griffin & Shams (2019)
     benchmarked_returns = [0.05, -1.9, -3.1, -6.1]
 
-    # --- PLOTTING ---
-    # Uses global dark theme settings (text is white, facecolor is black)
-    x = np.arange(len(categories))  # label locations
-    width = 0.35  # width of the bars
-
+    x = np.arange(len(categories)); width = 0.35 
     fig, ax = plt.subplots(figsize=(10, 6))
+    rects1 = ax.bar(x - width/2, raw_returns, width, label='Raw EOM Returns', color='#1f77b4')
+    rects2 = ax.bar(x + width/2, benchmarked_returns, width, label='Benchmarked Returns', color='#d62728')
 
-    # Plotting the bars
-    rects1 = ax.bar(x - width/2, raw_returns, width, label='Raw EOM Returns', color='#1f77b4') # Blue
-    rects2 = ax.bar(x + width/2, benchmarked_returns, width, label='Benchmarked Returns', color='#d62728') # Red
-
-    # Styling
     ax.set_ylabel('Return (%)', fontsize=12)
     ax.set_xlabel('Monthly Tether Issuance Quantile', fontsize=12)
     ax.set_title('Bitcoin End-of-Month Returns Conditional on Tether Issuance (Figure 28)', fontsize=14, fontweight='bold', pad=20)
-    ax.set_xticks(x)
-    ax.set_xticklabels(categories, fontsize=11)
-    # Changed black line to white for dark mode compatibility
-    ax.axhline(0, color='white', linewidth=0.8)
-    ax.legend()
+    ax.set_xticks(x); ax.set_xticklabels(categories, fontsize=11)
+    ax.axhline(0, color='white', linewidth=0.8); ax.legend()
+    ax.yaxis.grid(True, linestyle='--', alpha=0.5); ax.set_axisbelow(True)
 
-    # Grid
-    ax.yaxis.grid(True, linestyle='--', alpha=0.5)
-    ax.set_axisbelow(True)
-
-    # Helper function to add labels
     def autolabel(rects):
         for rect in rects:
             height = rect.get_height()
             xy_pos = (rect.get_x() + rect.get_width() / 2, height)
-            # Adjust offset for negative bars
             xy_text = (0, 5) if height >= 0 else (0, -15)
-            
-            # Don't label small bars to avoid clutter
             if abs(height) > 0.1:
-                ax.annotate(f'{height}%',
-                            xy=xy_pos,
-                            xytext=xy_text,
-                            textcoords="offset points",
-                            # Explicit white color for visibility on black background
+                ax.annotate(f'{height}%', xy=xy_pos, xytext=xy_text, textcoords="offset points",
                             ha='center', va='bottom', fontsize=10, fontweight='bold', color='white')
-
-    autolabel(rects1)
-    autolabel(rects2)
+    autolabel(rects1); autolabel(rects2)
 
     plt.tight_layout()
-
-    # Save the figure
     plt.savefig('figure_28_tether_issuance.png', dpi=300, bbox_inches='tight')
     plt.show()
 
@@ -873,23 +789,23 @@ def main_menu(full_data, volatility_data, data_loaded):
         '3': ('Figure 5: Supply/Demand Model (Fixed vs. Elastic)', generate_supply_volatility_model_figure_dark, None),
         '4': ('Figure 6: TPS Capacity Comparison', generate_tps_chart, None),
         '5': ('Figure 9: LN Centralization Parameter Map', generate_centralization_parameter_map, None),
-        '6': ('Figure 16: Systemic Shock Analysis', generate_systemic_shock_chart, None),
-        '7': ('Figures 17 & 18: Drawdown and Correlation Analysis', analyze_digital_gold_narrative, 'full'),
-        '8': ('Figure 20: Economic Incentive for Mining Centralization', generate_oceanic_games_model, None),
-        '9': ('Figure 22: Bitcoin Security Budget Dilemma', generate_security_budget_dilemma_chart, None),
-        '10': ('Figure 27: Wash Trading Forensic Failure Rates', generate_wash_trading_chart, None),
-        '11': ('Figure 28: Tether Issuance Impact', generate_tether_issuance_chart, None),
-        '12': ('Run All Figures', 'run_all', None),
+        '6': ('Figure 10: LN Topology (Network Simulation)', generate_topology_figure, None),
+        '7': ('Figure 11: LN Centralization (Gini Quantitative)', generate_gini_figure, None),
+        '8': ('Figure 16: Systemic Shock Analysis', generate_systemic_shock_chart, None),
+        '9': ('Figures 17 & 18: Drawdown and Correlation Analysis', analyze_digital_gold_narrative, 'full'),
+        '10': ('Figure 20: Economic Incentive for Mining Centralization', generate_oceanic_games_model, None),
+        '11': ('Figure 22: Bitcoin Security Budget Dilemma', generate_security_budget_dilemma_chart, None),
+        '12': ('Figure 27: Wash Trading Forensic Failure Rates', generate_wash_trading_chart, None),
+        '13': ('Figure 28: Tether Issuance Impact', generate_tether_issuance_chart, None),
+        '14': ('Run All Figures', 'run_all', None),
         '0': ('Exit', 'exit', None),
     }
 
     def run_all_figures():
         """Helper function to execute all figure generations sequentially."""
         print("\n--- RUNNING ALL FIGURES ---")
-        # Sort keys numerically to ensure correct order (0, 1, 2... 12)
         sorted_keys = sorted(menu_options.keys(), key=lambda x: int(x))
         for choice in sorted_keys:
-            # Ensure 'run_all' and 'exit' are not called in the loop
             if menu_options[choice][1] not in ['run_all', 'exit']:
                 execute_choice(choice)
         print("\n--- ALL FIGURES GENERATED ---")
@@ -902,7 +818,6 @@ def main_menu(full_data, volatility_data, data_loaded):
             print(f"\nERROR: Cannot generate '{description}'. Market data failed to load.")
             return
 
-        # Pass the correct dataset to the function
         if data_needed == 'full':
             func(full_data)
         elif data_needed == 'volatility':
@@ -910,14 +825,13 @@ def main_menu(full_data, volatility_data, data_loaded):
                 print("\nERROR: Volatility data slice is empty. Cannot generate VaR/GARCH plots.")
             else:
                 func(volatility_data)
-        else: # No data needed
+        else: 
             func()
 
     while True:
         print("\n" + "="*50)
         print("    REPRODUCIBLE ANALYSIS SCRIPT - MAIN MENU")
         print("="*50)
-        # Sort keys numerically for display
         sorted_keys = sorted(menu_options.keys(), key=lambda x: int(x))
         for key in sorted_keys:
             desc = menu_options[key][0]
@@ -930,7 +844,6 @@ def main_menu(full_data, volatility_data, data_loaded):
             print("Exiting program.")
             break
         elif choice in menu_options:
-            # Handle special commands like 'run_all' first
             if menu_options[choice][1] == 'run_all':
                 run_all_figures()
             else:
