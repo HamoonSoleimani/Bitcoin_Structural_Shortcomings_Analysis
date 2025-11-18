@@ -8,9 +8,10 @@
 #
 # Description: This script reproduces the core quantitative analyses and
 #              visualizations for the research paper, including Figures 2, 3, 4,
-#              5, 6, 9, 16 (Systemic Shock), 17, 18, 20, 22, and 27. It ensures 
-#              full reproducibility for data-driven plots via a static data file.
-# Version:    9.0 (Final - Added Figure 24 Systemic Shock Analysis)
+#              5, 6, 9, 16 (Systemic Shock), 17, 18, 20, 22, 27, and 28. 
+#              It ensures full reproducibility for data-driven plots via a static 
+#              data file.
+# Version:    10.0 (Final - Added Figure 28 Tether Issuance Analysis)
 # ==============================================================================
 
 import pandas as pd
@@ -793,6 +794,73 @@ def generate_wash_trading_chart():
     plt.savefig('cong_adapted_figure.png', dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor())
     plt.show()
 
+def generate_tether_issuance_chart():
+    """
+    Reproduces Figure 28: Bitcoin Returns Conditional on Tether Issuance.
+    Replicated from Griffin & Shams (2019).
+    """
+    print("\nGenerating Figure 28: Tether Issuance Impact...")
+    
+    # --- DATA PREPARATION ---
+    categories = ['Zero', 'Low', 'Medium', 'High']
+
+    # "Raw Returns" (Blue) - Estimated from Figure 9 visual in Griffin & Shams (2019)
+    raw_returns = [0.6, -0.5, -1.8, -4.2] 
+
+    # "Benchmarked Returns" (Red) - Exact values from Page 42 text of Griffin & Shams (2019)
+    benchmarked_returns = [0.05, -1.9, -3.1, -6.1]
+
+    # --- PLOTTING ---
+    # Uses global dark theme settings (text is white, facecolor is black)
+    x = np.arange(len(categories))  # label locations
+    width = 0.35  # width of the bars
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Plotting the bars
+    rects1 = ax.bar(x - width/2, raw_returns, width, label='Raw EOM Returns', color='#1f77b4') # Blue
+    rects2 = ax.bar(x + width/2, benchmarked_returns, width, label='Benchmarked Returns', color='#d62728') # Red
+
+    # Styling
+    ax.set_ylabel('Return (%)', fontsize=12)
+    ax.set_xlabel('Monthly Tether Issuance Quantile', fontsize=12)
+    ax.set_title('Bitcoin End-of-Month Returns Conditional on Tether Issuance (Figure 28)', fontsize=14, fontweight='bold', pad=20)
+    ax.set_xticks(x)
+    ax.set_xticklabels(categories, fontsize=11)
+    # Changed black line to white for dark mode compatibility
+    ax.axhline(0, color='white', linewidth=0.8)
+    ax.legend()
+
+    # Grid
+    ax.yaxis.grid(True, linestyle='--', alpha=0.5)
+    ax.set_axisbelow(True)
+
+    # Helper function to add labels
+    def autolabel(rects):
+        for rect in rects:
+            height = rect.get_height()
+            xy_pos = (rect.get_x() + rect.get_width() / 2, height)
+            # Adjust offset for negative bars
+            xy_text = (0, 5) if height >= 0 else (0, -15)
+            
+            # Don't label small bars to avoid clutter
+            if abs(height) > 0.1:
+                ax.annotate(f'{height}%',
+                            xy=xy_pos,
+                            xytext=xy_text,
+                            textcoords="offset points",
+                            # Explicit white color for visibility on black background
+                            ha='center', va='bottom', fontsize=10, fontweight='bold', color='white')
+
+    autolabel(rects1)
+    autolabel(rects2)
+
+    plt.tight_layout()
+
+    # Save the figure
+    plt.savefig('figure_28_tether_issuance.png', dpi=300, bbox_inches='tight')
+    plt.show()
+
 
 # --- 4. MAIN MENU AND SCRIPT EXECUTION ---
 
@@ -810,14 +878,15 @@ def main_menu(full_data, volatility_data, data_loaded):
         '8': ('Figure 20: Economic Incentive for Mining Centralization', generate_oceanic_games_model, None),
         '9': ('Figure 22: Bitcoin Security Budget Dilemma', generate_security_budget_dilemma_chart, None),
         '10': ('Figure 27: Wash Trading Forensic Failure Rates', generate_wash_trading_chart, None),
-        '11': ('Run All Figures', 'run_all', None),
+        '11': ('Figure 28: Tether Issuance Impact', generate_tether_issuance_chart, None),
+        '12': ('Run All Figures', 'run_all', None),
         '0': ('Exit', 'exit', None),
     }
 
     def run_all_figures():
         """Helper function to execute all figure generations sequentially."""
         print("\n--- RUNNING ALL FIGURES ---")
-        # Sort keys numerically to ensure correct order (0, 1, 2... 11)
+        # Sort keys numerically to ensure correct order (0, 1, 2... 12)
         sorted_keys = sorted(menu_options.keys(), key=lambda x: int(x))
         for choice in sorted_keys:
             # Ensure 'run_all' and 'exit' are not called in the loop
