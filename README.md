@@ -1,72 +1,178 @@
 # Bitcoin Structural Shortcomings Analysis
 
-**Repository for the code and data supporting the research paper:**
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-*An Examination of Bitcoin's Structural Shortcomings as Money: A Synthesis of Economic and Technical Critiques*
+Repository for the code and data supporting the research paper:
+
+**"An Examination of Bitcoin's Structural Shortcomings as Money: A Synthesis of Economic and Technical Critiques"**
 
 **Author:** Hamoon Soleimani  
-**Date of Analysis:** November 13, 2025
-
-This repository provides the complete, open-source Python script and the static dataset required to reproduce the key quantitative findings, visualizations, and econometric models presented in the paper.
+**Analysis Date:** November 13, 2025  
+**Script Version:** 11.2
 
 ---
 
-## 1. Reproducibility Guarantee
+## 📋 Overview
 
-The goal of this repository is to ensure **100% reproducibility** of the data-driven figures (Figures 2, 3, 4, 6, 17, and 18).
+This repository provides a complete, open-source Python implementation for reproducing all quantitative findings, visualizations, and econometric models presented in the research paper. The analysis examines Bitcoin's structural limitations across multiple dimensions including volatility, network topology, economic incentives, and environmental impact.
 
-*   **Static Data:** The analysis relies on historical price data for BTC-USD, GC=F, ^GSPC, UUP, and AAPL, finalized on **November 13, 2025**. This data is included in the file `research_data_static.csv`.
-*   **Static Dates:** The analysis script is hardcoded to use the exact start and end dates used in the paper, ensuring that rerunning the script yields the identical results presented in the publication.
+---
 
-## 2. Repository Contents
+## 🎯 Reproducibility Guarantee
 
-| File | Description | Purpose |
-| :--- | :--- | :--- |
-| `analysis_script.py` | The main Python script implementing all time-series analysis, VaR calculations, and GARCH modeling. | Executes all quantitative figures. |
-| `research_data_static.csv` | **Static dataset** containing the historical 'Close' prices for all tickers used in the analysis. | Ensures reproducibility independent of API changes. |
-| `requirements.txt` | A list of all Python packages and their versions required to run the script. | Simplifies environment setup. |
-| `README.md` | This instruction file. | Provides documentation and instructions. |
-| `figure_*.png` (Output) | Generated PNG files (e.g., `figure_4_garch_volatility.png`). | Output visualization files (will be generated upon first run). |
+Full reproducibility is ensured through:
 
-## 3. Setup and Execution
+- **Static Dataset**: Analysis uses `research_data_static.csv` containing historical price data for BTC-USD, Gold (GC=F), S&P 500 (^GSPC), USD Index (UUP), and Apple (AAPL), finalized on November 13, 2025
+- **API Fallback**: Automatic data fetching via `yfinance` API if static file is unavailable
+- **Hardcoded Parameters**: Critical analysis dates (e.g., Drawdown start: 2015-01-01) are fixed to match published results
+
+---
+
+## 📁 Repository Structure
+
+```
+Bitcoin_Structural_Shortcomings_Analysis/
+├── analysis_script.py              # Main Python script with all analysis logic
+├── research_data_static.csv        # Static historical price dataset
+├── requirements.txt                # Python package dependencies
+├── README.md                       # This file
+└── figures/                        # Generated visualizations (auto-created)
+    ├── figure_2.png
+    ├── figure_3.png
+    └── ...
+```
+
+### File Descriptions
+
+| File | Purpose |
+|------|---------|
+| `analysis_script.py` | Contains all analysis logic, simulation models, and plotting functions |
+| `research_data_static.csv` | Historical 'Close' prices for reproducibility independent of API changes |
+| `requirements.txt` | Complete list of required Python packages for easy environment setup |
+| `figure_*.png` | Output visualizations generated automatically by the script |
+
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
 
-You must have [Python 3](https://www.python.org/downloads/) installed on your system.
+- Python 3.8 or higher
+- pip package manager
 
-### Step 1: Clone the Repository
+### Installation
 
-```bash
-git clone https://github.com/YourUsername/Bitcoin_Structural_Shortcomings_Analysis.git
-cd Bitcoin_Structural_Shortcomings_Analysis
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/YourUsername/Bitcoin_Structural_Shortcomings_Analysis.git
+   cd Bitcoin_Structural_Shortcomings_Analysis
+   ```
+
+2. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+   Key packages include: `pandas`, `yfinance`, `arch`, `networkx`, `matplotlib`, `seaborn`, `scipy`, `numpy`
+
+3. **Run the analysis**
+   ```bash
+   python analysis_script.py
+   ```
+
+---
+
+## 📊 Interactive Menu System
+
+The script features an interactive menu allowing you to generate specific figures or run the complete analysis suite:
+
+### Available Options
+
+1. **Figure 2** - Comparative Rolling Volatility (BTC, Gold, Apple)
+2. **Figures 3 & 4** - Value-at-Risk (VaR) & GARCH(1,1) Volatility Modeling
+3. **Figure 5** - Supply/Demand Model (Theoretical Fixed vs. Elastic Supply)
+4. **Figure 6** - TPS Capacity Comparison (Log Scale)
+5. **Figure 9** - Lightning Network Centralization Parameter Map
+6. **Figure 10** - Lightning Network Topology Simulation (Barabási-Albert)
+7. **Figure 11** - Quantitative Centralization Analysis (Gini Coefficients)
+8. **Figure 16** - Systemic Shock Analysis (2021 Hashrate/Mempool Blackout)
+9. **Figures 17 & 18** - Drawdown Analysis & Correlation with S&P 500
+10. **Figure 19** - Climate Damages Analysis (Based on Jones et al., 2022)
+11. **Figure 20** - Economic Incentive for Mining Centralization (Oceanic Games)
+12. **Figure 22** - Bitcoin Security Budget Dilemma Model
+13. **Figure 27** - Wash Trading Forensic Failure Rates
+14. **Figure 28** - Bitcoin Returns Conditional on Tether Issuance
+15. **Figure 25** - Entity Distribution Analysis (Schnoering & Vazirgiannis)
+16. **Run All Figures** - Generate complete analysis suite sequentially
+
+All figures are generated using a custom dark theme for high contrast and saved as 300 DPI PNG files.
+
+---
+
+## 🔬 Analysis Methodology
+
+### Analytical Components
+
+| Analysis Type | Methodology | Figures |
+|---------------|-------------|---------|
+| **Volatility Analysis** | Annualized rolling standard deviation, GARCH(1,1) with Student's t-distribution, 95% VaR | 2, 3, 4 |
+| **Network Topology** | NetworkX simulations, Barabási-Albert preferential attachment, Gini coefficient analysis | 9, 10, 11 |
+| **Macroeconomic Models** | Supply curve elasticity modeling, comparative TPS analysis (Visa/Mastercard benchmarks) | 5, 6 |
+| **On-Chain Forensics** | Entity clustering distribution, wash trading failure rates, Tether issuance correlation | 25, 27, 28 |
+| **Systemic Risk** | Event study of April 2021 Xinjiang blackout (hashrate vs mempool congestion) | 16 |
+| **Environmental Impact** | Comparative climate damages as percentage of market price | 19 |
+| **Game Theory** | Economic incentives for mining centralization (Oceanic games), security budget modeling | 20, 22 |
+
+### Key Features
+
+- **Econometric Models**: GARCH volatility forecasting with conditional heteroskedasticity
+- **Network Science**: Complex network analysis using preferential attachment models
+- **Time Series Analysis**: Rolling correlations, drawdown calculations, and event studies
+- **Comparative Analysis**: Multi-asset benchmarking against traditional financial instruments
+
+---
+
+## 📈 Output Specifications
+
+- **Format**: PNG images at 300 DPI resolution
+- **Theme**: Custom dark theme optimized for academic publications
+- **Location**: Figures saved to working directory or `figures/` subfolder
+- **Naming**: Consistent with paper figure numbers (e.g., `figure_2.png`)
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes:
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+---
+
+## 📄 Citation
+
+If you use this code or data in your research, please cite:
+
+```bibtex
+@article{soleimani2025bitcoin,
+  title={An Examination of Bitcoin's Structural Shortcomings as Money: A Synthesis of Economic and Technical Critiques},
+  author={Soleimani, Hamoon},
+  year={2025},
+  month={November}
+}
 ```
 
-### Step 2: Install Dependencies
+## 📝 License
 
-Use the included `requirements.txt` file to install the required libraries (pandas, numpy, yfinance, arch, etc.):
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-```bash
-pip install -r requirements.txt
-```
+---
 
-### Step 3: Run the Analysis
+---
 
-Execute the main script. It will automatically load data from the static CSV file and generate all quantitative figures in PNG format within the current directory.
-
-```bash
-python analysis_script.py
-```
-
-## 4. Analysis Overview
-
-The `analysis_script.py` performs the following key functions, referencing the figures in the paper:
-
-| Function in Code | Analysis Performed | Figure | Citation/Reference |
-| :--- | :--- | :--- | :--- |
-| `generate_volatility_comparison_chart` | 15-day and 200-day Annualized Rolling Volatility for BTC, Gold, and Apple (log scale). | Figure 2 | Yermack (2014) |
-| `analyze_risk_and_garch` | Calculates 1-Day 95% Value-at-Risk (VaR) for core assets. | Figure 3 | |
-| `analyze_risk_and_garch` | Fits the GARCH(1,1) model to Bitcoin returns, calculating conditional volatility and half-life persistence. | Figure 4 | Chinazzo & Jeleskovic (2024) |
-| `generate_tps_chart` | Visualization of Transaction Per Second (TPS) comparison against Visa and Mastercard. | Figure 6 | Visa 10-K (2024), Mastercard 10-K (2024) |
-| `analyze_digital_gold_narrative` | Calculates and visualizes Bitcoin's maximum historical drawdown from All-Time Highs. | Figure 17 | iShares (2025) |
-| `analyze_digital_gold_narrative` | Calculates and plots the 60-Day Rolling Correlation between Bitcoin and the S&P 500. | Figure 18 | Conlon et al. (2020) |
-
+**Last Updated:** November 13, 2025
