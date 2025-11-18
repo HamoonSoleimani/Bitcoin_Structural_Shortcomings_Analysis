@@ -8,9 +8,9 @@
 #
 # Description: This script reproduces the core quantitative analyses and
 #              visualizations for the research paper, including Figures 2, 3, 4,
-#              5, 6, 9, 17, 18, 20, and 22. It ensures full reproducibility for
-#              data-driven plots via a static data file.
-# Version:    7.0 (Final - Added Figure 22 and refactored menu)
+#              5, 6, 9, 17, 18, 20, 22, and 27. It ensures full reproducibility
+#              for data-driven plots via a static data file.
+# Version:    8.0 (Final - Added Figure 27 Wash Trading Analysis)
 # ==============================================================================
 
 import pandas as pd
@@ -567,6 +567,115 @@ def generate_security_budget_dilemma_chart():
     plt.savefig('figure_22_security_budget_dilemma.png', dpi=300)
     plt.show()
 
+def generate_wash_trading_chart():
+    """
+    Reproduces Figure 27: Percentage of Failed Forensic Tests for Wash Trading.
+    Data is manually extracted from the reference study and re-plotted to ensure
+    copyright compliance (adaptation).
+    """
+    print("\nGenerating Figure 27: Wash Trading Forensic Failure Rates...")
+
+    # --- DATA ENTRY ---
+    # Data for the top chart (Exchanges)
+    # Grouped exactly as they appear in the source material for accuracy
+    exchange_data = {
+        'Exchange': [
+            'U8; U14', 'U9', 'U2; U5', 'U10', 'U1; U4; U7; U12', 
+            'UT4; UT6', 'U3', 'U11; U16', 'UT10', 'U6; U15', 
+            'UT7', 'UT3; UT8', 'UT1; UT2; UT5', 'U13', 'UT9', 'R1; R2; R3'
+        ],
+        'Failure_Rate': [
+            98, 95, 88, 75, 70, 
+            67, 58, 42, 42, 34, 
+            22, 17, 8, 3, 2, 0
+        ],
+        # Assigning categories for color coding
+        'Category': [
+            'High Risk', 'High Risk', 'High Risk', 'High Risk', 'High Risk',
+            'Medium Risk', 'High Risk', 'High Risk', 'Medium Risk', 'High Risk',
+            'Medium Risk', 'Medium Risk', 'Medium Risk', 'High Risk', 'Medium Risk', 'Regulated'
+        ]
+    }
+
+    # Data for the bottom chart (Cryptocurrencies)
+    crypto_data = {
+        'Crypto': ['XRP', 'LTC', 'BTC', 'ETH'],
+        'Failure_Rate': [54, 47, 48, 42]
+    }
+
+    # Create DataFrames
+    df_exch = pd.DataFrame(exchange_data)
+    df_crypto = pd.DataFrame(crypto_data)
+
+    # --- PLOTTING ---
+
+    # Set up the figure with two subplots (vertical layout)
+    # Uses global dark theme automatically
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 12), gridspec_kw={'height_ratios': [2, 1]})
+    plt.subplots_adjust(hspace=0.3) # Add space between charts
+
+    # --- Plot 1: Exchanges ---
+
+    # Define colors based on category to make it distinct from the original
+    colors = []
+    for cat in df_exch['Category']:
+        if cat == 'High Risk':
+            colors.append('#d62728') # Red for Unregulated Tier-2 (High risk)
+        elif cat == 'Medium Risk':
+            colors.append('#1f77b4') # Blue for Unregulated Tier-1
+        else:
+            colors.append('#2ca02c') # Green for Regulated
+
+    y_pos = np.arange(len(df_exch))
+
+    # Create horizontal bars
+    bars1 = ax1.barh(y_pos, df_exch['Failure_Rate'], color=colors, height=0.6)
+
+    # Formatting Ax1
+    ax1.set_yticks(y_pos)
+    ax1.set_yticklabels(df_exch['Exchange'], fontsize=10)
+    ax1.invert_yaxis() # Highest values on top
+    ax1.set_xlabel('Percentage of Failed Tests (%)', fontsize=11, fontweight='bold')
+    ax1.set_title('Percentage of Failed Forensic Tests by Exchange', fontsize=13, fontweight='bold', pad=15)
+    ax1.set_xlim(0, 100)
+    ax1.grid(axis='x', linestyle='--', alpha=0.5) # Use lighter grid for dark theme
+
+    # Add value labels to the end of bars
+    # Note: color='white' is critical here for visibility on black background
+    for i, v in enumerate(df_exch['Failure_Rate']):
+        ax1.text(v + 1, i + 0.15, str(v) + '%', color='white', fontsize=9)
+
+    # --- Plot 2: Cryptocurrencies ---
+
+    # Sort crypto data for better visualization
+    df_crypto = df_crypto.sort_values('Failure_Rate', ascending=True)
+
+    y_pos_crypto = np.arange(len(df_crypto))
+    # Use specific colors for coins suitable for dark theme
+    # Silver, Gold, Orange(BTC), Blue(ETH/XRP)
+    crypto_colors = ['#00688b', '#c0c0c0', '#f2a900', '#00688b'] 
+
+    bars2 = ax2.barh(y_pos_crypto, df_crypto['Failure_Rate'], color=crypto_colors, height=0.6)
+
+    # Formatting Ax2
+    ax2.set_yticks(y_pos_crypto)
+    ax2.set_yticklabels(df_crypto['Crypto'], fontsize=11)
+    ax2.set_xlabel('Percentage of Failed Tests (%)', fontsize=11, fontweight='bold')
+    ax2.set_title('Percentage of Failed Forensic Tests by Cryptocurrency', fontsize=13, fontweight='bold', pad=15)
+    ax2.set_xlim(0, 100)
+    ax2.grid(axis='x', linestyle='--', alpha=0.5)
+
+    # Add value labels
+    for i, v in enumerate(df_crypto['Failure_Rate']):
+        ax2.text(v + 1, i + 0.1, str(v) + '%', color='white', fontsize=10)
+
+    # --- FINAL TOUCHES ---
+    plt.tight_layout()
+
+    # Save the figure
+    plt.savefig('cong_adapted_figure.png', dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor())
+    plt.show()
+
 
 # --- 4. MAIN MENU AND SCRIPT EXECUTION ---
 
@@ -582,14 +691,17 @@ def main_menu(full_data, volatility_data, data_loaded):
         '6': ('Figures 17 & 18: Drawdown and Correlation Analysis', analyze_digital_gold_narrative, 'full'),
         '7': ('Figure 20: Economic Incentive for Mining Centralization', generate_oceanic_games_model, None),
         '8': ('Figure 22: Bitcoin Security Budget Dilemma', generate_security_budget_dilemma_chart, None),
-        '9': ('Run All Figures', 'run_all', None),
+        '9': ('Figure 27: Wash Trading Forensic Failure Rates', generate_wash_trading_chart, None),
+        '10': ('Run All Figures', 'run_all', None),
         '0': ('Exit', 'exit', None),
     }
 
     def run_all_figures():
         """Helper function to execute all figure generations sequentially."""
         print("\n--- RUNNING ALL FIGURES ---")
-        for choice in sorted(menu_options.keys()):
+        # Sort keys numerically to ensure correct order (0, 1, 2... 10)
+        sorted_keys = sorted(menu_options.keys(), key=lambda x: int(x))
+        for choice in sorted_keys:
             # Ensure 'run_all' and 'exit' are not called in the loop
             if menu_options[choice][1] not in ['run_all', 'exit']:
                 execute_choice(choice)
@@ -618,7 +730,10 @@ def main_menu(full_data, volatility_data, data_loaded):
         print("\n" + "="*50)
         print("    REPRODUCIBLE ANALYSIS SCRIPT - MAIN MENU")
         print("="*50)
-        for key, (desc, _, _) in menu_options.items():
+        # Sort keys numerically for display
+        sorted_keys = sorted(menu_options.keys(), key=lambda x: int(x))
+        for key in sorted_keys:
+            desc = menu_options[key][0]
             print(f"  [{key}] {desc}")
         print("-"*50)
 
