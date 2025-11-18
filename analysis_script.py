@@ -8,10 +8,10 @@
 #
 # Description: This script reproduces the core quantitative analyses and
 #              visualizations for the research paper, including Figures 2-6, 9-11,
-#              16, 17, 18, 19, 20, 22, 27, and 28.
+#              16-20, 22, 25, 27, and 28.
 #              It ensures full reproducibility for data-driven plots via a static 
 #              data file.
-# Version:    11.1 (Final - Added Climate Damages Analysis)
+# Version:    11.2 (Final - Added Entity Distribution Analysis Figure 25)
 # ==============================================================================
 
 import pandas as pd
@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.gridspec as gridspec
 import matplotlib.dates as mdates
+import matplotlib.ticker as mtick
 from matplotlib.patches import FancyArrowPatch
 from matplotlib.lines import Line2D
 import networkx as nx
@@ -854,6 +855,103 @@ def generate_security_budget_dilemma_chart():
     plt.savefig('figure_22_security_budget_dilemma.png', dpi=300)
     plt.show()
 
+def generate_entity_distribution_chart():
+    """
+    Reproduces Figure 25: Distribution of Identifiable Entity Types.
+    Based on data from Schnoering & Vazirgiannis (2025).
+    Adapted to the script's dark theme.
+    """
+    print("\nGenerating Figure 25: Entity Distribution Analysis (Schnoering & Vazirgiannis)...")
+
+    # --- 1. Data Extraction ---
+    data = {
+        'Entity': [
+            'Individual', 'Bet', 'Gambling', 'Exchange', 'Mining', 
+            'Ponzi', 'Ransomware', 'Faucet', 'Marketplace', 'Mixer', 'Bridge'
+        ],
+        'Count': [
+            23236, 6723, 1410, 794, 724, 
+            587, 234, 125, 115, 80, 70
+        ]
+    }
+    df = pd.DataFrame(data)
+
+    # Calculate Percentage
+    total_nodes = df['Count'].sum()
+    df['Percentage'] = (df['Count'] / total_nodes) * 100
+
+    # --- 2. Categorization ---
+    def categorize(entity):
+        if entity in ['Bet', 'Gambling', 'Ponzi']:
+            return 'Speculation & Gambling'
+        elif entity in ['Exchange', 'Bridge']:
+            return 'Financial Infrastructure'
+        elif entity == 'Individual':
+            return 'Individual / Unclassified'
+        elif entity == 'Marketplace':
+            return 'Commercial (Medium of Exchange)'
+        elif entity in ['Ransomware', 'Mixer']:
+            return 'Illicit / Obfuscation'
+        else:
+            return 'Network Operations (Mining/Faucet)'
+
+    df['Category'] = df['Entity'].apply(categorize)
+    df = df.sort_values('Count', ascending=True)
+
+    # --- 3. Visualization (Dark Theme Adapted) ---
+    fig, ax = plt.subplots(figsize=(12, 7))
+
+    # Define colors to highlight the contrast (Adapted for Dark Mode)
+    palette = {
+        'Individual / Unclassified': '#95a5a6',       # Silver/Gray (Noise)
+        'Speculation & Gambling': '#e74c3c',          # Bright Red
+        'Financial Infrastructure': '#3498db',        # Bright Blue
+        'Illicit / Obfuscation': '#9b59b6',           # Purple
+        'Network Operations (Mining/Faucet)': '#7f8c8d', # Slate Gray
+        'Commercial (Medium of Exchange)': '#2ecc71'  # Bright Green
+    }
+
+    # Create horizontal bar chart
+    bars = ax.barh(df['Entity'], df['Count'], color=[palette[c] for c in df['Category']])
+
+    # --- 4. Annotations & Styling ---
+    for i, (count, pct) in enumerate(zip(df['Count'], df['Percentage'])):
+        label_text = f"{count:,.0f} ({pct:.1f}%)"
+        # Text color white for visibility on black background
+        ax.text(count + 500, i, label_text, va='center', fontsize=10, fontweight='bold', color='white')
+
+    ax.set_title('Distribution of Identifiable Entity Types on the Bitcoin Network (2025)\nData Adapted from Schnoering & Vazirgiannis', 
+                 fontsize=14, fontweight='bold', pad=20, color='white')
+    ax.set_xlabel('Number of Identified Nodes (Linear Scale)', fontsize=10, color='white')
+
+    # Legend
+    custom_lines = [Line2D([0], [0], color=palette[k], lw=6) for k in palette.keys()]
+    ax.legend(custom_lines, palette.keys(), title="Functional Category", loc='lower right', frameon=True)
+
+    # Grid and Spines
+    ax.grid(axis='x', linestyle='--', alpha=0.3, color='#555555')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+
+    # Highlight specific data point: Marketplace
+    try:
+        mp_loc = list(df['Entity']).index('Marketplace')
+        ax.annotate('Commercial Use\n(0.3%)', 
+                    xy=(115, mp_loc), 
+                    xytext=(4000, mp_loc - 1),
+                    arrowprops=dict(facecolor='#2ecc71', shrink=0.05, width=1, headwidth=8, edgecolor='none'),
+                    fontsize=11, fontweight='bold', color='#2ecc71')
+    except ValueError:
+        pass # 'Marketplace' not found in index (unlikely given hardcoded data)
+
+    plt.tight_layout()
+    output_filename = 'figure_25_schnoering_entity_distribution.png'
+    plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+    print(f"Chart saved to {output_filename}")
+    plt.show()
+
+
 def generate_wash_trading_chart():
     """
     Reproduces Figure 27: Percentage of Failed Forensic Tests for Wash Trading.
@@ -957,7 +1055,8 @@ def main_menu(full_data, volatility_data, data_loaded):
         '12': ('Figure 22: Bitcoin Security Budget Dilemma', generate_security_budget_dilemma_chart, None),
         '13': ('Figure 27: Wash Trading Forensic Failure Rates', generate_wash_trading_chart, None),
         '14': ('Figure 28: Tether Issuance Impact', generate_tether_issuance_chart, None),
-        '15': ('Run All Figures', 'run_all', None),
+        '15': ('Figure 25: Entity Distribution Analysis (Schnoering & Vazirgiannis)', generate_entity_distribution_chart, None),
+        '16': ('Run All Figures', 'run_all', None),
         '0': ('Exit', 'exit', None),
     }
 
