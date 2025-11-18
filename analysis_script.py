@@ -8,10 +8,10 @@
 #
 # Description: This script reproduces the core quantitative analyses and
 #              visualizations for the research paper, including Figures 2-6, 9-11,
-#              16, 17, 18, 20, 22, 27, and 28.
+#              16, 17, 18, 19, 20, 22, 27, and 28.
 #              It ensures full reproducibility for data-driven plots via a static 
 #              data file.
-# Version:    11.0 (Final - Added Network Topology & Gini Analysis)
+# Version:    11.1 (Final - Added Climate Damages Analysis)
 # ==============================================================================
 
 import pandas as pd
@@ -618,6 +618,165 @@ def analyze_digital_gold_narrative(data):
     
     plt.tight_layout(); plt.savefig('figure_18_rolling_correlation.png', dpi=300); plt.show()
 
+
+def generate_climate_damages_jones_chart():
+    """
+    Reproduces Figure 19: Climate Damages Analysis based on Jones et al. (2022).
+    Visualizes comparative damages, Bitcoin specific temporal data, and category averages.
+    Adapted to the script's dark theme.
+    """
+    print("\nGenerating Figure 19: Climate Damages Analysis (Jones et al. 2022)...")
+
+    # --- DATA FROM JONES ET AL. (2022) ---
+    commodities_data = {
+        'Coal': {'damage': 95, 'color': '#34495e', 'category': 'fossil'},
+        'Natural Gas': {'damage': 46, 'color': '#34495e', 'category': 'fossil'},
+        'Gasoline': {'damage': 41, 'color': '#c0392b', 'category': 'fossil'},
+        'Bitcoin (avg)': {'damage': 35, 'color': '#f39c12', 'category': 'crypto'},
+        'Beef': {'damage': 33, 'color': '#8e44ad', 'category': 'agriculture'},
+        'Crude Oil': {'damage': 25, 'color': '#34495e', 'category': 'fossil'},
+        'Gold': {'damage': 4, 'color': '#f1c40f', 'category': 'metal'},
+        'Solar': {'damage': 3, 'color': '#27ae60', 'category': 'renewable'},
+    }
+    bitcoin_temporal = {
+        'years': [2016, 2017, 2018, 2019, 2020, 2021],
+        'damages': [16, 18, 37, 53, 82, 25]
+    }
+
+    # --- FIGURE SETUP ---
+    # Using global dark theme, so facecolor is black by default via plt.style
+    fig = plt.figure(figsize=(16, 9))
+    gs = gridspec.GridSpec(2, 2, height_ratios=[2, 1], width_ratios=[1.3, 1], 
+                           hspace=0.35, wspace=0.3)
+
+    # --- PANEL A: COMMODITY COMPARISON (MAIN) ---
+    ax1 = fig.add_subplot(gs[0, 0])
+
+    items = list(commodities_data.keys())
+    damages = [commodities_data[k]['damage'] for k in items]
+    colors = [commodities_data[k]['color'] for k in items]
+
+    sorted_indices = np.argsort(damages)[::-1]
+    items_sorted = [items[i] for i in sorted_indices]
+    damages_sorted = [damages[i] for i in sorted_indices]
+    colors_sorted = [colors[i] for i in sorted_indices]
+
+    y_pos = np.arange(len(items_sorted))
+
+    # Bars with black edges for contrast
+    bars = ax1.barh(y_pos, damages_sorted, color=colors_sorted, 
+                    edgecolor='black', linewidth=1.5, height=0.7, alpha=0.9)
+
+    # Highlight Bitcoin
+    bitcoin_idx = items_sorted.index('Bitcoin (avg)')
+    bars[bitcoin_idx].set_edgecolor('#d35400')
+    bars[bitcoin_idx].set_linewidth(2.5)
+    bars[bitcoin_idx].set_hatch('///')
+    
+    ax1.set_yticks(y_pos)
+    ax1.set_yticklabels(items_sorted, fontsize=12, fontweight='bold', color='white')
+    ax1.invert_yaxis()
+    ax1.set_xlabel('Climate Damages (% of Market Price)', fontsize=12, fontweight='bold', color='white')
+    ax1.set_title('Panel A: Comparative Climate Damages Across Commodities', 
+                  fontsize=14, fontweight='bold', pad=15, loc='left', color='white')
+
+    for i, (val, item) in enumerate(zip(damages_sorted, items_sorted)):
+        label = f' {val}%'
+        ax1.text(val + 1, i, label, va='center', fontsize=11, fontweight='bold', color='white')
+
+    ax1.axvline(x=35, color='#e67e22', linestyle='--', linewidth=1.5, alpha=0.6)
+    ax1.text(35, len(items_sorted) - 0.5, 'Bitcoin avg', fontsize=9, 
+             color='#e67e22', ha='center', fontweight='bold')
+
+    ax1.spines['top'].set_visible(False)
+    ax1.spines['right'].set_visible(False)
+    ax1.spines['left'].set_visible(False)
+    ax1.grid(axis='x', alpha=0.2, linestyle='--', color='#555555')
+    ax1.set_xlim(0, 105)
+
+    # --- PANEL B: TEMPORAL ANALYSIS ---
+    ax2 = fig.add_subplot(gs[0, 1])
+    years = bitcoin_temporal['years']
+    btc_damages = bitcoin_temporal['damages']
+
+    ax2.plot(years, btc_damages, color='#e67e22', marker='o', 
+             markersize=10, linewidth=3, markeredgecolor='white', 
+             markeredgewidth=2, label='Bitcoin', zorder=3)
+
+    ax2.fill_between(years, btc_damages, alpha=0.25, color='#e67e22')
+
+    avg_damage = np.mean(btc_damages)
+    ax2.axhline(y=avg_damage, color='#95a5a6', linestyle='--', 
+                linewidth=2, alpha=0.7, label=f'Mean: {avg_damage:.0f}%')
+    ax2.axhline(y=4, color='#f1c40f', linestyle='-', 
+                linewidth=2, alpha=0.7, label='Gold: 4%')
+
+    peak_year = years[np.argmax(btc_damages)]
+    peak_value = max(btc_damages)
+    ax2.annotate(f'Peak: {peak_value}%\n({peak_year})', 
+                 xy=(peak_year, peak_value), xytext=(peak_year - 1.5, peak_value + 8),
+                 arrowprops=dict(arrowstyle='->', color='#c0392b', lw=2),
+                 fontsize=10, fontweight='bold', color='#c0392b',
+                 bbox=dict(boxstyle='round,pad=0.4', fc='black', ec='#c0392b', lw=1.5))
+
+    ax2.set_xlabel('Year', fontsize=12, fontweight='bold', color='white')
+    ax2.set_ylabel('Climate Damages (%)', fontsize=12, fontweight='bold', color='white')
+    ax2.set_title('Panel B: Bitcoin Damages Over Time (2016-2021)', 
+                  fontsize=14, fontweight='bold', pad=15, loc='left', color='white')
+    ax2.set_ylim(0, 95)
+    ax2.set_xticks(years)
+    ax2.legend(loc='upper left', fontsize=10, frameon=True, shadow=False)
+    ax2.spines['top'].set_visible(False)
+    ax2.spines['right'].set_visible(False)
+    ax2.grid(axis='y', alpha=0.3, linestyle='--', color='#555555')
+
+    # --- PANEL C: CATEGORY SUMMARY ---
+    ax3 = fig.add_subplot(gs[1, :])
+
+    categories = {}
+    for item, data in commodities_data.items():
+        cat = data['category']
+        if cat not in categories:
+            categories[cat] = []
+        categories[cat].append(data['damage'])
+
+    cat_names = list(categories.keys())
+    cat_avgs = [np.mean(categories[cat]) for cat in cat_names]
+    cat_colors = ['#34495e', '#f39c12', '#8e44ad', '#f1c40f', '#27ae60']
+
+    x_pos = np.arange(len(cat_names))
+    ax3.bar(x_pos, cat_avgs, color=cat_colors, edgecolor='black', 
+            linewidth=2, alpha=0.9, width=0.6)
+
+    cat_labels = ['Fossil Fuels', 'Cryptocurrency', 'Agriculture', 'Precious Metals', 'Renewable Energy']
+    ax3.set_xticks(x_pos)
+    ax3.set_xticklabels(cat_labels, fontsize=11, fontweight='bold', color='white')
+    ax3.set_ylabel('Average Climate Damages (%)', fontsize=11, fontweight='bold', color='white')
+    ax3.set_title('Panel C: Average Damages by Category', 
+                  fontsize=14, fontweight='bold', pad=15, loc='left', color='white')
+
+    for i, val in enumerate(cat_avgs):
+        ax3.text(i, val + 2, f'{val:.1f}%', ha='center', fontsize=11, fontweight='bold', color='white')
+
+    ax3.spines['top'].set_visible(False)
+    ax3.spines['right'].set_visible(False)
+    ax3.set_ylim(0, max(cat_avgs) * 1.2)
+    ax3.grid(axis='y', alpha=0.2, linestyle='--', color='#555555')
+
+    # --- FOOTER ---
+    fig.text(0.5, 0.01, 
+             'Data Source: Jones, B.A., Goodkind, A.L., & Berrens, R.P. (2022). '
+             'Economic estimation of Bitcoin mining\'s climate damages. Scientific Reports, 12, 14512.',
+             ha='center', fontsize=9, style='italic', color='#bbbbbb',
+             bbox=dict(facecolor='#1c1c1c', alpha=0.8, edgecolor='#555555', 
+                       boxstyle='round,pad=0.8', linewidth=1))
+
+    plt.savefig('figure_19_jones_climate_damages.png', dpi=300, bbox_inches='tight', 
+                facecolor='black', edgecolor='none')
+    print("✓ Visualization saved as 'figure_19_jones_climate_damages.png'")
+    plt.show()
+
+
 def generate_oceanic_games_model():
     """
     Reproduces Figure 20: Economic incentive for mining centralization from an
@@ -793,11 +952,12 @@ def main_menu(full_data, volatility_data, data_loaded):
         '7': ('Figure 11: LN Centralization (Gini Quantitative)', generate_gini_figure, None),
         '8': ('Figure 16: Systemic Shock Analysis', generate_systemic_shock_chart, None),
         '9': ('Figures 17 & 18: Drawdown and Correlation Analysis', analyze_digital_gold_narrative, 'full'),
-        '10': ('Figure 20: Economic Incentive for Mining Centralization', generate_oceanic_games_model, None),
-        '11': ('Figure 22: Bitcoin Security Budget Dilemma', generate_security_budget_dilemma_chart, None),
-        '12': ('Figure 27: Wash Trading Forensic Failure Rates', generate_wash_trading_chart, None),
-        '13': ('Figure 28: Tether Issuance Impact', generate_tether_issuance_chart, None),
-        '14': ('Run All Figures', 'run_all', None),
+        '10': ('Figure 19: Climate Damages Analysis (Jones et al.)', generate_climate_damages_jones_chart, None),
+        '11': ('Figure 20: Economic Incentive for Mining Centralization', generate_oceanic_games_model, None),
+        '12': ('Figure 22: Bitcoin Security Budget Dilemma', generate_security_budget_dilemma_chart, None),
+        '13': ('Figure 27: Wash Trading Forensic Failure Rates', generate_wash_trading_chart, None),
+        '14': ('Figure 28: Tether Issuance Impact', generate_tether_issuance_chart, None),
+        '15': ('Run All Figures', 'run_all', None),
         '0': ('Exit', 'exit', None),
     }
 
