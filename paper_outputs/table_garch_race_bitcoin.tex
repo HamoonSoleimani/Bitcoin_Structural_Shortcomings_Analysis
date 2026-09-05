@@ -1,0 +1,19 @@
+\begin{table}
+\caption{GARCH-family model comparison for Bitcoin log returns (ranked by BIC).}
+\label{tab:garch_bitcoin}
+\begin{tabular}{llrrr}
+\toprule
+Model & Distribution & LogLik & AIC & BIC \\
+\midrule
+EGARCH & t & -7741.3602 & 15492.7203 & 15522.6375 \\
+EGARCH & skewt & -7741.0405 & 15494.0810 & 15529.9817 \\
+GARCH & t & -7756.4362 & 15522.8723 & 15552.7895 \\
+GJR-GARCH & t & -7755.7625 & 15523.5249 & 15559.4256 \\
+GARCH & skewt & -7756.2655 & 15524.5310 & 15560.4316 \\
+GJR-GARCH & skewt & -7755.5984 & 15525.1967 & 15567.0808 \\
+GARCH & normal & -8102.3800 & 16212.7600 & 16236.6938 \\
+GJR-GARCH & normal & -8099.3395 & 16208.6789 & 16238.5961 \\
+EGARCH & normal & -8105.4195 & 16218.8390 & 16242.7727 \\
+\bottomrule
+\end{tabular}
+\end{table}
