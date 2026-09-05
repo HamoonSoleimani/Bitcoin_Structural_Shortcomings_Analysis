@@ -19,7 +19,6 @@ Key empirical analyses include:
 
 ## Repository Structure
 
-*   `document.tex`: The full LaTeX source code for the academic paper.
 *   `analysis_script.py`: The reproducible Python script used to fetch current market data, execute all statistical tests, and generate the 19 figures and data tables found in the paper.
 *   `/paper_outputs/`: Directory generated automatically by the Python script containing all exported `.pdf` / `.png` figures and `.csv` / `.tex` tables.
 
