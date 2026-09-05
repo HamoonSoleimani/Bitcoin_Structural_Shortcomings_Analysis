@@ -1,1147 +1,1200 @@
+#!/usr/bin/env python3
 # ==============================================================================
-#      PYTHON SCRIPT FOR REPRODUCIBLE DATA ANALYSIS AND VISUALIZATION
+#   REPRODUCIBLE ANALYSIS SCRIPT
 # ------------------------------------------------------------------------------
-# Title:      An Examination of Bitcoin's Structural Shortcomings as Money:
-#             A Synthesis of Economic and Technical Critiques
-# Author:     Hamoon Soleimani
-# Date:       November 13, 2025 (Date of final analysis)
+#   Title:   Bitcoin's Structural Position as Money: A Contested Synthesis
+#   Author:  Hamoon Soleimani
 #
-# Description: This script reproduces the core quantitative analyses and
-#              visualizations for the research paper, including Figures 2-6, 9-11,
-#              16-20, 22, 25, 27, and 28.
-#              It ensures full reproducibility for data-driven plots via a static 
-#              data file.
-# Version:    11.2 (Final - Added Entity Distribution Analysis Figure 25)
+# REQUIRED DEPENDENCIES
+# ------------------------------------------------------------------------------
+#   pip install yfinance arch
 # ==============================================================================
 
-import pandas as pd
-import numpy as np
-import yfinance as yf
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-import matplotlib.gridspec as gridspec
-import matplotlib.dates as mdates
-import matplotlib.ticker as mtick
-from matplotlib.patches import FancyArrowPatch
-from matplotlib.lines import Line2D
-import networkx as nx
-import seaborn as sns
-from arch import arch_model
-import datetime
 import os
+import json
+import datetime
 import warnings
 
-# --- 1. GLOBAL CONFIGURATION & STATIC PARAMETERS ---
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from scipy import stats
+from scipy.optimize import minimize
 
-# --- PLOT STYLE CONFIGURATION ---
-# A custom, readable dark theme for all plots.
-plt.style.use('dark_background')
-plt.rcParams.update({
-    "grid.color": "#555555",
-    "grid.linestyle": "--",
-    "grid.linewidth": 0.5,
-    "axes.facecolor": "black",
-    "axes.edgecolor": "white",
-    "axes.labelcolor": "white",
-    "text.color": "white",
-    "xtick.color": "white",
-    "ytick.color": "white",
-    "legend.facecolor": "#1c1c1c",
-    "legend.edgecolor": "white",
-    "figure.facecolor": "black",
-    "figure.edgecolor": "black",
-    "font.family": "serif",
-    "font.serif": ["Times New Roman"],
-    "axes.labelsize": 12,
-    "xtick.labelsize": 10,
-    "ytick.labelsize": 10,
-    "legend.fontsize": 10,
-})
-warnings.filterwarnings("ignore") # Suppress plot warnings
+warnings.filterwarnings("ignore")
 
-# --- HARDCODED DATES (CRITICAL FOR REPRODUCIBILITY) ---
-FINAL_ANALYSIS_DATE = '2025-11-13'
+try:
+    import yfinance as yf
+    HAS_YFINANCE = True
+except ImportError:
+    HAS_YFINANCE = False
+
+try:
+    from arch import arch_model
+    HAS_ARCH = True
+except ImportError:
+    HAS_ARCH = False
+
+
+# ==============================================================================
+# 1. GLOBAL CONFIGURATION
+# ==============================================================================
+
+FINAL_ANALYSIS_DATE = '2026-09-05'
 START_DATE_DRAWDOWN = '2015-01-01'
-START_DATE_VOLATILITY = '2020-01-01'
 FULL_START_DATE = START_DATE_DRAWDOWN
 
-# Define the tickers for the primary assets
 TICKERS = {
     'Bitcoin': 'BTC-USD',
     'US Dollar': 'UUP',
     'Gold': 'GC=F',
-    'S&P 500': '^GSPC'
+    'S&P 500': '^GSPC',
+    'VIX': '^VIX',
 }
 ASSETS_FOR_VOL_COMP = {"AAPL": "Apple", "BTC-USD": "Bitcoin", "GC=F": "Gold"}
-CACHE_FILENAME = "research_data_static.csv"
+CACHE_FILENAME = "research_data_static_v5.csv"
+
+TRADING_DAYS = {
+    'Bitcoin': 365, 'Apple': 252, 'Gold': 252, 'S&P 500': 252, 'US Dollar': 252,
+    'VIX': 252,
+}
+
+OUTPUT_DIR = "paper_outputs"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+CB = {
+    "orange": "#E69F00", "sky": "#56B4E9", "green": "#009E73",
+    "yellow": "#F0E442", "blue": "#0072B2", "vermillion": "#D55E00",
+    "purple": "#CC79A7", "black": "#000000", "grey": "#7F7F7F",
+}
+
+try:
+    plt.style.use('seaborn-v0_8-whitegrid')
+except (OSError, ValueError):
+    plt.style.use('default')
+
+plt.rcParams.update({
+    "figure.facecolor": "white", "axes.facecolor": "white",
+    "axes.edgecolor": "black", "axes.labelcolor": "black", "text.color": "black",
+    "xtick.color": "black", "ytick.color": "black",
+    "grid.color": "#cccccc", "grid.linestyle": "--", "grid.linewidth": 0.5,
+    "font.family": "serif", "axes.labelsize": 12, "xtick.labelsize": 10,
+    "ytick.labelsize": 10, "legend.fontsize": 10, "savefig.dpi": 300,
+})
 
 
-# --- 2. ROBUST DATA LOADING UTILITY ---
+# ==============================================================================
+# 2. OUTPUT HELPERS
+# ==============================================================================
 
-def get_data(start_date, end_date, cache_filename):
-    """
-    Loads historical price data. Prioritizes static CSV for reproducibility.
-    If CSV is missing, it fetches all required data in a single API call.
-    """
-    all_tickers_needed = list(TICKERS.values()) + list(ASSETS_FOR_VOL_COMP.keys())
-    all_tickers_needed = sorted(list(set(all_tickers_needed)))
+def save_fig(fig, basename):
+    note = getattr(fig, "_pending_footnote", None)
+    if note:
+        import textwrap
+        fig_w_in = fig.get_size_inches()[0]
+        chars_per_line = max(60, int(fig_w_in * 13))
+        wrapped = "\n".join(textwrap.wrap(note, width=chars_per_line))
+        n_lines = wrapped.count("\n") + 1
+        current_bottom = fig.subplotpars.bottom
+        extra_needed = 0.018 + 0.026 * n_lines
+        fig.subplots_adjust(bottom=min(0.45, current_bottom + extra_needed))
+        fig.text(0.5, 0.004, wrapped, ha='center', va='bottom', fontsize=7.5,
+                  style='italic', color='#444444')
+    pdf_path = os.path.join(OUTPUT_DIR, f"{basename}.pdf")
+    png_path = os.path.join(OUTPUT_DIR, f"{basename}.png")
+    fig.savefig(pdf_path, bbox_inches='tight')
+    fig.savefig(png_path, dpi=300, bbox_inches='tight')
+    print(f"  -> saved {pdf_path} (vector) and {png_path} (preview)")
+
+
+def export_table(df, basename, caption="", label=""):
+    csv_path = os.path.join(OUTPUT_DIR, f"{basename}.csv")
+    tex_path = os.path.join(OUTPUT_DIR, f"{basename}.tex")
+    df.to_csv(csv_path, index=False)
+    try:
+        tex = df.to_latex(index=False, float_format="%.4f", caption=caption, label=label, escape=True)
+    except TypeError:
+        tex = df.to_latex(index=False, float_format="%.4f", escape=True)
+    with open(tex_path, "w") as f:
+        f.write(tex)
+    print(f"  -> saved {csv_path} and {tex_path}")
+
+
+def footnote(fig, text):
+    fig._pending_footnote = text
+
+
+# ==============================================================================
+# 3. MARKET DATA LOADING
+# ==============================================================================
+
+def get_market_data(start_date, end_date, cache_filename):
+    if not HAS_YFINANCE:
+        print("  [ERROR] `yfinance` is not installed. Run: pip install yfinance")
+        return pd.DataFrame()
+
+    all_tickers_needed = sorted(set(list(TICKERS.values()) + list(ASSETS_FOR_VOL_COMP.keys())))
 
     if os.path.exists(cache_filename):
-        print(f"Loading data from static file: {cache_filename}...")
+        print(f"Loading data from static cache: {cache_filename}...")
         try:
             data = pd.read_csv(cache_filename, index_col='Date', parse_dates=True)
             if not data.empty and all(t in data.columns for t in all_tickers_needed):
                 return data.dropna()
-            else:
-                print("Static data file is empty or incomplete. Refetching all data.")
+            print("Cache is empty or incomplete. Refetching.")
         except Exception as e:
-            print(f"Error loading static file ({e}). Refetching data.")
+            print(f"Error loading cache ({e}). Refetching.")
 
-    print("Fetching new data from yfinance (API Fallback)...")
+    print("Fetching data from yfinance...")
     try:
         data = yf.download(all_tickers_needed, start=start_date, end=end_date)['Close'].dropna()
         if data.empty:
-            raise ValueError("Download from yfinance resulted in an empty DataFrame. Check tickers and dates.")
-        
+            raise ValueError("yfinance returned an empty DataFrame.")
         data.to_csv(cache_filename)
-        print(f"Data saved to static file: {cache_filename}")
+        print(f"Cached to {cache_filename}")
         return data
     except Exception as e:
-        raise ConnectionError(f"Failed to fetch data from yfinance: {e}")
+        raise ConnectionError(f"Failed to fetch market data: {e}")
 
 
-# --- 3. ANALYSIS AND VISUALIZATION FUNCTIONS ---
+# ==============================================================================
+# 4. STATISTICAL TOOLKIT (unchanged from v4; already correct on verification)
+# ==============================================================================
 
-def generate_volatility_comparison_chart(df_raw):
+def adf_test(series, name=""):
+    try:
+        from statsmodels.tsa.stattools import adfuller
+        stat, pvalue, usedlag, nobs, crit, icbest = adfuller(series.dropna(), autolag='AIC')
+        return {"Series": name, "ADF_stat": stat, "p_value": pvalue,
+                "lags_used": usedlag, "n_obs": nobs,
+                "crit_1pct": crit['1%'], "crit_5pct": crit['5%'], "crit_10pct": crit['10%']}
+    except ImportError:
+        return {"Series": name, "ADF_stat": np.nan, "p_value": np.nan,
+                "note": "statsmodels not installed; run `pip install statsmodels`."}
+
+
+def ljung_box_manual(x, lags=(10, 20)):
+    x = np.asarray(x, dtype=float)
+    x = x[~np.isnan(x)]
+    n = len(x)
+    xc = x - x.mean()
+    acf_all = np.correlate(xc, xc, mode='full')[n - 1:] / np.arange(n, 0, -1)
+    acf_all = acf_all / acf_all[0]
+    rows = []
+    for h in lags:
+        rho = acf_all[1:h + 1]
+        Q = n * (n + 2) * np.sum((rho ** 2) / (n - np.arange(1, h + 1)))
+        p = 1 - stats.chi2.cdf(Q, df=h)
+        rows.append({"lag": h, "Q_stat": Q, "p_value": p})
+    return pd.DataFrame(rows)
+
+
+def historical_var_es(returns, alpha=0.05):
+    r = returns.dropna()
+    var = -np.quantile(r, alpha)
+    tail = r[r <= -var]
+    es = -tail.mean() if len(tail) > 0 else np.nan
+    return var, es
+
+
+def parametric_var_cf(returns, alpha=0.05):
+    r = returns.dropna()
+    mu, sigma = r.mean(), r.std()
+    S = stats.skew(r)
+    K = stats.kurtosis(r, fisher=True)
+    z = stats.norm.ppf(alpha)
+    z_cf = z + (z**2 - 1) * S / 6 + (z**3 - 3*z) * K / 24 - (2*z**3 - 5*z) * (S**2) / 36
+    return -(mu + z_cf * sigma)
+
+
+def evt_var_es(returns, alpha=0.05, threshold_q=0.95):
+    losses = -returns.dropna().values
+    u = np.quantile(losses, threshold_q)
+    exceed = losses[losses > u] - u
+    n = len(losses)
+    Nu = len(exceed)
+    if Nu < 20:
+        return {"VaR": np.nan, "ES": np.nan, "xi": np.nan, "beta": np.nan, "u": u, "Nu": Nu,
+                "note": "Insufficient tail exceedances (<20) for a reliable GPD fit."}
+    xi, _, beta = stats.genpareto.fit(exceed, floc=0)
+    if abs(xi) < 1e-6:
+        var = u - beta * np.log((n / Nu) * alpha)
+        es = var + beta
+    else:
+        var = u + (beta / xi) * (((n / Nu) * alpha) ** (-xi) - 1)
+        es = (var + beta - xi * u) / (1 - xi)
+    return {"VaR": var, "ES": es, "xi": xi, "beta": beta, "u": u, "Nu": Nu}
+
+
+def kupiec_pof_test(hit_series, alpha):
+    hits = np.asarray(hit_series)
+    n = len(hits)
+    x = int(hits.sum())
+    p = alpha
+    p_hat = x / n if n > 0 else np.nan
+    if x == 0 or x == n or p_hat in (0, 1):
+        return {"LR_stat": np.nan, "p_value": np.nan, "n": n, "violations": x, "expected": p * n}
+    log_num = (n - x) * np.log(1 - p) + x * np.log(p)
+    log_den = (n - x) * np.log(1 - p_hat) + x * np.log(p_hat)
+    lr = -2 * (log_num - log_den)
+    p_value = 1 - stats.chi2.cdf(lr, df=1)
+    return {"LR_stat": lr, "p_value": p_value, "n": n, "violations": x, "expected": p * n}
+
+
+def christoffersen_independence_test(hit_series):
+    hits = np.asarray(hit_series).astype(int)
+    n00 = n01 = n10 = n11 = 0
+    for i in range(1, len(hits)):
+        prev, curr = hits[i - 1], hits[i]
+        if prev == 0 and curr == 0: n00 += 1
+        elif prev == 0 and curr == 1: n01 += 1
+        elif prev == 1 and curr == 0: n10 += 1
+        elif prev == 1 and curr == 1: n11 += 1
+    n0, n1 = n00 + n01, n10 + n11
+    pi01 = n01 / n0 if n0 > 0 else 0
+    pi11 = n11 / n1 if n1 > 0 else 0
+    pi = (n01 + n11) / (n0 + n1) if (n0 + n1) > 0 else 0
+
+    def _safe(p, x):
+        return x * np.log(p) if (p > 0 and x > 0) else 0
+
+    ll_r = _safe(pi, n01) + _safe(1 - pi, n00) + _safe(pi, n11) + _safe(1 - pi, n10)
+    ll_u = _safe(pi01, n01) + _safe(1 - pi01, n00) + _safe(pi11, n11) + _safe(1 - pi11, n10)
+    lr_ind = -2 * (ll_r - ll_u)
+    p_value = 1 - stats.chi2.cdf(lr_ind, df=1)
+    return {"LR_ind": lr_ind, "p_value": p_value}
+
+
+def backtest_var(returns, alpha=0.05, window=250):
+    returns = returns.dropna()
+    hits, idx = [], []
+    for t in range(window, len(returns) - 1):
+        train = returns.iloc[t - window:t]
+        var_t = -np.quantile(train, alpha)
+        realized = returns.iloc[t + 1]
+        hits.append(1 if realized < -var_t else 0)
+        idx.append(returns.index[t + 1])
+    hit_series = pd.Series(hits, index=idx)
+    kupiec = kupiec_pof_test(hit_series, alpha)
+    christoffersen = christoffersen_independence_test(hit_series)
+    return hit_series, kupiec, christoffersen
+
+
+# ==============================================================================
+# 5. GARCH MODEL RACE (unchanged from v4)
+# ==============================================================================
+
+def run_garch_model_race(returns_pct, asset_name):
+    if not HAS_ARCH:
+        print("  [ERROR] `arch` is not installed. Run: pip install arch")
+        return None, None, None
+
+    specs = [
+        ("GARCH", dict(vol='Garch', p=1, q=1)),
+        ("EGARCH", dict(vol='EGARCH', p=1, q=1)),
+        ("GJR-GARCH", dict(vol='Garch', p=1, o=1, q=1)),
+    ]
+    dists = ["normal", "t", "skewt"]
+    rows, fitted = [], {}
+    for name, kwargs in specs:
+        for dist in dists:
+            try:
+                am = arch_model(returns_pct.dropna(), dist=dist, **kwargs)
+                res = am.fit(disp='off', show_warning=False)
+                rows.append({"Model": name, "Distribution": dist,
+                              "LogLik": res.loglikelihood, "AIC": res.aic, "BIC": res.bic})
+                fitted[(name, dist)] = res
+            except Exception:
+                rows.append({"Model": name, "Distribution": dist,
+                              "LogLik": np.nan, "AIC": np.nan, "BIC": np.nan})
+
+    comp_df = pd.DataFrame(rows).sort_values("BIC")
+    if comp_df["BIC"].isna().all():
+        print("  [ERROR] All GARCH specifications failed to converge.")
+        return None, comp_df, None
+
+    best_model, best_dist = comp_df.iloc[0][["Model", "Distribution"]]
+    best_res = fitted[(best_model, best_dist)]
+    std_resid = (best_res.resid / best_res.conditional_volatility).dropna()
+
+    lb_levels = ljung_box_manual(std_resid.values, lags=(10, 20))
+    lb_squares = ljung_box_manual((std_resid.values) ** 2, lags=(10, 20))
+
+    print(f"\n--- GARCH Model Race: {asset_name} ---")
+    print(comp_df.to_string(index=False))
+    print(f"\nSelected by BIC: {best_model} ({best_dist})")
+    print("\nLjung-Box on standardized residuals:")
+    print(lb_levels.to_string(index=False))
+    print("\nLjung-Box on SQUARED standardized residuals:")
+    print(lb_squares.to_string(index=False))
+
+    export_table(comp_df, f"table_garch_race_{asset_name.lower().replace(' ', '_')}",
+                 caption=f"GARCH-family model comparison for {asset_name} log returns (ranked by BIC).",
+                 label=f"tab:garch_{asset_name.lower()}")
+
+    diagnostics = {"levels": lb_levels, "squares": lb_squares,
+                   "model": best_model, "dist": best_dist}
+    return best_res, comp_df, diagnostics
+
+
+# ==============================================================================
+# 6. DCC-GARCH + [NEW IN v5] MACRO-LIQUIDITY PARTIAL CORRELATION CONTROL
+# ==============================================================================
+
+def dcc_garch_bivariate(returns_df, asset_names, max_iter=400):
+    """Two-step DCC-GARCH(1,1) (Engle, 2002). Unchanged from v4."""
+    if not HAS_ARCH:
+        print("  [ERROR] `arch` is not installed. Run: pip install arch")
+        return None, None
+
+    std_resid = {}
+    for col in asset_names:
+        am = arch_model(returns_df[col].dropna(), vol='Garch', p=1, q=1, dist='t')
+        res = am.fit(disp='off')
+        std_resid[col] = res.resid / res.conditional_volatility
+    Z = pd.concat(std_resid, axis=1).dropna()
+    Z.columns = asset_names
+    z = Z.values
+    T, N = z.shape
+    Qbar = np.cov(z.T)
+
+    def unpack(theta):
+        ra, rb = theta
+        a = 1 / (1 + np.exp(-ra)) * 0.3
+        b = 1 / (1 + np.exp(-rb)) * 0.95
+        if a + b >= 0.999:
+            b = 0.999 - a
+        return a, b
+
+    def neg_loglik(theta):
+        a, b = unpack(theta)
+        Qt = Qbar.copy()
+        ll = 0.0
+        for t in range(T):
+            if t > 0:
+                zt1 = z[t - 1].reshape(-1, 1)
+                Qt = (1 - a - b) * Qbar + a * (zt1 @ zt1.T) + b * Qt
+            d = np.sqrt(np.diag(Qt))
+            Rt = Qt / np.outer(d, d)
+            try:
+                sign, logdet = np.linalg.slogdet(Rt)
+                if sign <= 0:
+                    return 1e10
+                Rinv = np.linalg.inv(Rt)
+            except np.linalg.LinAlgError:
+                return 1e10
+            zt = z[t].reshape(-1, 1)
+            ll += 0.5 * (logdet + (zt.T @ Rinv @ zt).item())
+        return ll
+
+    opt = minimize(neg_loglik, x0=np.array([0.0, 2.0]), method='Nelder-Mead',
+                    options={'maxiter': max_iter, 'xatol': 1e-4, 'fatol': 1e-4})
+    a, b = unpack(opt.x)
+
+    Qt = Qbar.copy()
+    corr_series = []
+    for t in range(T):
+        if t > 0:
+            zt1 = z[t - 1].reshape(-1, 1)
+            Qt = (1 - a - b) * Qbar + a * (zt1 @ zt1.T) + b * Qt
+        d = np.sqrt(np.diag(Qt))
+        Rt = Qt / np.outer(d, d)
+        corr_series.append(Rt[0, 1])
+    dcc = pd.Series(corr_series, index=Z.index, name=f"DCC_{asset_names[0]}_{asset_names[1]}")
+    print(f"DCC-GARCH(1,1) estimated: a={a:.4f}, b={b:.4f}, persistence(a+b)={a + b:.4f}")
+    return dcc, {"a": a, "b": b}
+
+
+def rolling_partial_correlation(returns_df, x_col, y_col, control_cols, window=60):
     """
-    Reproduces Figure 2: Comparative Rolling Volatility (BTC, Gold, Apple).
+    [NEW IN v5 -- addresses the audit's DCC-GARCH-omitted-confounders point]
+    Rolling PARTIAL Pearson correlation between x_col and y_col, controlling
+    linearly for control_cols, computed window-by-window via the standard
+    residual-regression method: regress x and y each on the controls within
+    the window, then correlate the residuals. This nets out shared linear
+    co-movement with e.g. the Dollar Index and the VIX before measuring the
+    Bitcoin-equity relationship, directly testing whether the raw DCC-GARCH
+    correlation is a macro-liquidity artifact or survives the confound.
     """
+    df = returns_df[[x_col, y_col] + control_cols].dropna()
+    idx = df.index
+    out = pd.Series(index=idx, dtype=float)
+    X = df[control_cols].values
+    x = df[x_col].values
+    y = df[y_col].values
+    n = len(df)
+    for t in range(window, n):
+        Xw = X[t - window:t]
+        Xw1 = np.column_stack([np.ones(len(Xw)), Xw])
+        xw = x[t - window:t]
+        yw = y[t - window:t]
+        try:
+            bx, *_ = np.linalg.lstsq(Xw1, xw, rcond=None)
+            by, *_ = np.linalg.lstsq(Xw1, yw, rcond=None)
+            resid_x = xw - Xw1 @ bx
+            resid_y = yw - Xw1 @ by
+            if resid_x.std() > 0 and resid_y.std() > 0:
+                out.iloc[t] = np.corrcoef(resid_x, resid_y)[0, 1]
+        except np.linalg.LinAlgError:
+            continue
+    return out
+
+
+# ==============================================================================
+# 7. FIGURE FUNCTIONS
+# ==============================================================================
+
+def fig01_hierarchy_of_money():
+    print("\nGenerating Figure 1: Hierarchy of Money (conceptual diagram)...")
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.set_xlim(0, 10); ax.set_ylim(1.6, 9.2)
+    ax.axis('off')
+    tiers = [
+        ("Sovereign Fiat Currency\n(state's own IOU; tax-enforced acceptance)", 8.2, CB["vermillion"]),
+        ("Central Bank Reserves / Settlement Balances", 6.4, CB["orange"]),
+        ("Commercial Bank Deposits", 4.6, CB["blue"]),
+        ("Private Debt Instruments\n(corporate/household IOUs)", 2.8, CB["grey"]),
+    ]
+    box_w, box_h = 7.0, 1.3
+    for label, y, color in tiers:
+        ax.add_patch(mpatches.FancyBboxPatch((1.5, y - box_h/2), box_w, box_h,
+                     boxstyle="round,pad=0.08", facecolor=color, alpha=0.85, edgecolor='black'))
+        ax.text(5.0, y, label, ha='center', va='center', fontsize=10.5, weight='bold', color='white')
+    ax.annotate('', xy=(0.9, 8.2), xytext=(0.9, 2.8),
+                arrowprops=dict(arrowstyle='->', lw=2, color='black'))
+    ax.text(0.5, 5.5, 'Increasing acceptability\n& liquidity', rotation=90, ha='center', va='center', fontsize=9)
+    ax.set_title('The Post-Keynesian "Hierarchy of Money" (Fig. 1)\nCONCEPTUAL DIAGRAM', fontsize=13)
+    footnote(fig, "Pure conceptual illustration (Minsky, 1986; Wray, 2015); not derived from data.")
+    plt.tight_layout()
+    save_fig(fig, "figure_01_hierarchy_of_money")
+    plt.close(fig)
+
+
+def fig02_volatility_comparison(df_raw):
     print("\nGenerating Figure 2: Comparative Rolling Volatility...")
-    ROLLING_WINDOWS = [15, 200]
+    windows = [15, 200]
     df = df_raw.rename(columns=ASSETS_FOR_VOL_COMP).dropna()
-    
+    colors = {'Apple': CB["sky"], 'Bitcoin': CB["orange"], 'Gold': CB["vermillion"]}
     for col in ASSETS_FOR_VOL_COMP.values():
         df[f'{col} Returns'] = df[col].pct_change()
-        for window in ROLLING_WINDOWS:
-            df[f'{col} Volatility {window}d'] = df[f'{col} Returns'].rolling(window).std() * np.sqrt(252)
+        ann = np.sqrt(TRADING_DAYS.get(col, 252))
+        for w in windows:
+            df[f'{col} Volatility {w}d'] = df[f'{col} Returns'].rolling(w).std() * ann
+    fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(12, 9), sharex=True)
+    for w, ax, label in zip(windows, axes, ["Short-Term (15-Day)", "Long-Term (200-Day)"]):
+        for name in ASSETS_FOR_VOL_COMP.values():
+            df[f'{name} Volatility {w}d'].plot(ax=ax, color=colors[name], lw=1.8, label=name)
+        ax.set_ylabel(f"{label} Ann. Volatility")
+        ax.legend(loc="upper left")
+    fig.suptitle("Comparative Rolling Volatility: Bitcoin, Gold, Apple (Fig. 2)", fontsize=15)
 
-    fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(14, 10), sharex=True)
-    colors = {'Apple': '#3498db', 'Bitcoin': '#f1c40f', 'Gold': '#e74c3c'}
-    
-    ax1 = axes[0]
-    for asset_name in ASSETS_FOR_VOL_COMP.values():
-        df[f'{asset_name} Volatility 15d'].plot(ax=ax1, color=colors[asset_name], lw=2, label=asset_name)
-    ax1.set_ylabel("15-Day Annualized Volatility")
-    ax1.set_title("Short-Term Volatility Comparison (Annualized)")
-    ax1.legend()
-    
-    ax2 = axes[1]
-    for asset_name in ASSETS_FOR_VOL_COMP.values():
-        df[f'{asset_name} Volatility 200d'].plot(ax=ax2, color=colors[asset_name], lw=2, label=asset_name)
-    ax2.set_ylabel("200-Day Annualized Volatility")
-    ax2.set_title("Long-Term Volatility Comparison (Annualized)")
-    
-    fig.suptitle("Comparative Rolling Volatility: Bitcoin, Gold, and Apple (Figure 2)", fontsize=16)
+    footnote(fig, "Annualization: 365 days for Bitcoin (24/7 market), 252 for equities/gold.")
     plt.tight_layout(rect=[0, 0.03, 1, 0.96])
-    plt.savefig('figure_2_rolling_volatility.png', dpi=300)
-    plt.show()
+    save_fig(fig, "figure_02_rolling_volatility")
+    plt.close(fig)
+    return df
 
 
-def analyze_risk_and_garch(data):
-    """
-    Runs VaR analysis (Figure 3) and GARCH modeling (Figure 4) on asset returns.
-    """
-    print("\nGenerating Figure 3: Value-at-Risk (VaR) Comparison...")
-    log_returns = np.log(data / data.shift(1)).dropna()
-    
-    var_results = [{'Asset': name, 'VaR_95': log_returns[ticker].quantile(0.05) * 100}
-                   for name, ticker in TICKERS.items() if ticker in log_returns.columns]
-    var_df = pd.DataFrame(var_results).sort_values('VaR_95', ascending=True)
-    
-    fig_var, ax_var = plt.subplots(figsize=(10, 6))
-    bar_colors = ['#e74c3c', '#f39c12', '#3498db', '#2ecc71']
-    bars = ax_var.bar(var_df['Asset'], var_df['VaR_95'], color=bar_colors)
-    ax_var.set_title('1-Day 95% Value-at-Risk (VaR) Comparison (Figure 3)', fontsize=16)
-    ax_var.set_ylabel('Potential 1-Day Loss (%)')
-    
-    for bar in bars:
-        yval = bar.get_height()
-        ax_var.text(bar.get_x() + bar.get_width() / 2.0, yval - 0.1, f'{yval:.2f}%', ha='center', va='top', weight='bold', color='white')
-    
+def fig03_04_risk_suite(data):
+    print("\nGenerating Figures 3-4: VaR/ES Suite, Backtests, and GARCH Model Race...")
+    price_cols = [TICKERS[k] for k in ['Bitcoin', 'US Dollar', 'Gold', 'S&P 500']]
+    log_returns = np.log(data[price_cols] / data[price_cols].shift(1)).dropna() * 100
+
+    rows = []
+    for name in ['Bitcoin', 'US Dollar', 'Gold', 'S&P 500']:
+        ticker = TICKERS[name]
+        if ticker not in log_returns.columns:
+            continue
+        r = log_returns[ticker]
+        hist_var, hist_es = historical_var_es(r, 0.05)
+        cf_var = parametric_var_cf(r, 0.05)
+        evt = evt_var_es(r, 0.05)
+        rows.append({
+            "Asset": name, "Historical_VaR95": hist_var, "Historical_ES95": hist_es,
+            "CornishFisher_VaR95": cf_var, "EVT_VaR95": evt["VaR"], "EVT_ES95": evt["ES"],
+            "EVT_xi": evt.get("xi", np.nan),
+        })
+    var_df = pd.DataFrame(rows).sort_values("Historical_VaR95", ascending=False)
+    print(var_df.to_string(index=False))
+    export_table(var_df, "table_var_es_comparison",
+                 caption="1-day 95% VaR and Expected Shortfall by method (percent).", label="tab:var_es")
+
+    fig, ax = plt.subplots(figsize=(11, 6))
+    x = np.arange(len(var_df))
+    width = 0.25
+    ax.bar(x - width, var_df["Historical_VaR95"], width, label="Historical VaR", color=CB["blue"])
+    ax.bar(x, var_df["CornishFisher_VaR95"], width, label="Cornish-Fisher VaR", color=CB["orange"])
+    ax.bar(x + width, var_df["EVT_VaR95"], width, label="EVT (POT/GPD) VaR", color=CB["vermillion"])
+    ax.set_xticks(x); ax.set_xticklabels(var_df["Asset"])
+    ax.set_ylabel("1-Day 95% VaR (%)")
+    ax.set_title("1-Day 95% VaR by Method (Fig. 3)")
+
+    ax.legend()
+    footnote(fig, "EVT VaR uses a Peaks-Over-Threshold GPD fit (McNeil & Frey, 2000); "
+                   "Cornish-Fisher adjusts for skewness/kurtosis.")
     plt.tight_layout()
-    plt.savefig('figure_3_value_at_risk.png', dpi=300)
-    plt.show()
+    save_fig(fig, "figure_03_var_comparison")
+    plt.close(fig)
 
-    print("\nGenerating Figure 4: GARCH Conditional Volatility...")
-    btc_returns = log_returns[TICKERS['Bitcoin']].dropna() * 100
-    model = arch_model(btc_returns, vol='Garch', p=1, q=1, dist='t')
-    results = model.fit(disp='off')
-    
-    print("\nGARCH(1,1) Model Parameters (Figure 4 supporting data):")
-    print(results.summary())
-    
-    persistence = results.params['alpha[1]'] + results.params['beta[1]']
-    half_life = np.log(0.5) / np.log(persistence)
-    print(f"\nVolatility Persistence (alpha + beta): {persistence:.4f}")
-    print(f"Volatility Half-Life (days): {half_life:.1f}")
+    bt_rows = []
+    for name in ['Bitcoin', 'US Dollar', 'Gold', 'S&P 500']:
+        ticker = TICKERS[name]
+        if ticker not in log_returns.columns:
+            continue
+        r = log_returns[ticker]
+        if len(r) < 300:
+            continue
+        hit_series, kupiec, christoffersen = backtest_var(r, alpha=0.05, window=250)
+        bt_rows.append({
+            "Asset": name, "N_obs": kupiec["n"], "Violations": kupiec["violations"],
+            "Expected": kupiec["expected"], "Kupiec_LR": kupiec["LR_stat"],
+            "Kupiec_p": kupiec["p_value"], "Christoffersen_LR": christoffersen["LR_ind"],
+            "Christoffersen_p": christoffersen["p_value"],
+        })
+    bt_df = pd.DataFrame(bt_rows)
+    print("\nRolling out-of-sample VaR backtests:")
+    print(bt_df.to_string(index=False))
+    export_table(bt_df, "table_var_backtests",
+                 caption="Kupiec and Christoffersen VaR backtests.", label="tab:var_backtest")
 
-    fig_garch, ax_garch = plt.subplots(figsize=(12, 6))
-    ax_garch.plot(btc_returns.index, btc_returns, color='grey', alpha=0.6, label='Daily Returns (%)')
-    ax_garch.plot(results.conditional_volatility.index, results.conditional_volatility, color='#e74c3c', label='GARCH Conditional Volatility')
-    ax_garch.set_title('Bitcoin Daily Returns and GARCH(1,1) Conditional Volatility (Figure 4)', fontsize=16)
-    ax_garch.set_ylabel('Percentage (%)')
-    ax_garch.legend()
-    plt.tight_layout()
-    plt.savefig('figure_4_garch_volatility.png', dpi=300)
-    plt.show()
+    btc_res, garch_comp, garch_diag = run_garch_model_race(log_returns[TICKERS['Bitcoin']], "Bitcoin")
+    if btc_res is not None:
+        fig2, ax2 = plt.subplots(figsize=(12, 6))
+        ax2.plot(log_returns.index, log_returns[TICKERS['Bitcoin']], color=CB["grey"], alpha=0.6,
+                 lw=0.8, label='Daily Log Return (%)')
+        ax2.plot(btc_res.conditional_volatility.index, btc_res.conditional_volatility,
+                 color=CB["vermillion"], lw=1.6,
+                 label=f'Conditional Volatility ({garch_diag["model"]}-{garch_diag["dist"]}, BIC-selected)')
+        ax2.set_title('Bitcoin Returns and BIC-Selected Conditional Volatility (Fig. 4)')
+        ax2.set_ylabel('Percent (%)')
+        ax2.legend()
+        footnote(fig2, "Model selected from a 9-specification race by BIC; see "
+                        "table_garch_race_bitcoin.csv for full comparison and diagnostics.")
+        plt.tight_layout()
+        save_fig(fig2, "figure_04_garch_volatility")
+        plt.close(fig2)
+
+    return var_df, bt_df, garch_comp
 
 
-def generate_supply_volatility_model_figure_dark():
+def fig05_settlement_layer_comparison():
     """
-    Reproduces Figure 5: A theoretical model comparing fixed vs. elastic supply.
-    FIXED: Resolved NameError by replacing undefined 'props' with 'bbox_props'.
+    [UPDATED IN v5] Fedwire TPS corrected using the Fed's own 2024 PFMI
+    disclosure (836,322 avg daily transactions -> ~9.68 TPS), replacing v4's
+    6.65 TPS figure, which was computed from an annual count that could not
+    be re-verified. T2 is now shown as a RANGE (400k-450k payments/day) since
+    the ECB's TARGET Services Annual Report 2024 does not publish a single
+    clean annual transaction count the way Fedwire does; v4's precise
+    107,999,982 figure is dropped rather than repeated without a live source.
     """
-    print("\nGenerating Figure 5: Supply/Demand Model...")
-    fig = plt.figure(figsize=(18, 9), dpi=150)
-    gs = fig.add_gridspec(1, 2, left=0.08, right=0.95, top=0.90, bottom=0.12, wspace=0.30)
-    ax1 = fig.add_subplot(gs[0, 0])
-    ax2 = fig.add_subplot(gs[0, 1])
-
-    def setup_axes(ax, title):
-        ax.set_xlim(-2, 12)
-        ax.set_ylim(-2, 12)
-        for spine in ax.spines.values(): spine.set_visible(False)
-        ax.set_xticks([]); ax.set_yticks([])
-        arrow_props = dict(arrowstyle='->', lw=2, color='white', mutation_scale=20, clip_on=False)
-        ax.add_patch(FancyArrowPatch((0, 0), (11.5, 0), **arrow_props))
-        ax.add_patch(FancyArrowPatch((0, 0), (0, 11.5), **arrow_props))
-        ax.text(11.8, -0.4, 'Quantity ($q$)', fontsize=13, ha='center', va='top', style='italic', weight='semibold')
-        ax.text(-0.5, 11.8, 'Price ($p$)', fontsize=13, ha='right', va='center', style='italic', weight='semibold')
-        ax.text(5.5, 12.8, title, fontsize=17, ha='center', va='bottom', weight='bold', 
-                bbox=dict(boxstyle='round,pad=0.6', facecolor='#1a1a1a', edgecolor='white', alpha=0.95, linewidth=1.5))
-
-    def draw_bracket(ax, x1, y1, x2, y2, label, o='vertical', lo=0.5, c='white', cap_inward=False):
-        props = dict(color=c, lw=1.5, solid_capstyle='round'); offset = 0.2 if cap_inward else -0.2
-        if o == 'vertical':
-            ax.plot([x1, x1], [y1, y2], **props); ax.plot([x1, x1 + offset], [y1, y1], **props); ax.plot([x1, x1 + offset], [y2, y2], **props)
-            ax.text(x1 - lo, (y1 + y2) / 2, label, ha='right', va='center', fontsize=11, style='italic', weight='semibold',
-                    bbox=dict(boxstyle='round,pad=0.4', facecolor='black', edgecolor=c, alpha=0.95, linewidth=1.2))
-        else:
-            ax.plot([x1, x2], [y1, y1], **props); ax.plot([x1, x1], [y1, y1 + offset], **props); ax.plot([x2, x2], [y1, y1 + offset], **props)
-            ax.text((x1 + x2) / 2, y1 - lo, label, ha='center', va='top', fontsize=11, style='italic', weight='semibold',
-                    bbox=dict(boxstyle='round,pad=0.4', facecolor='black', edgecolor=c, alpha=0.95, linewidth=1.2))
-
-    # Chart 1: Bitcoin
-    setup_axes(ax1, 'Bitcoin (Fixed Supply)')
-    q_s = 5.5; ax1.plot([q_s, q_s], [0, 11], '#3498db', lw=3, zorder=3)
-    ax1.text(q_s + 0.4, 11.5, '$S$', ha='center', va='bottom', fontsize=16, weight='bold', color='#3498db', bbox=dict(boxstyle='round,pad=0.35', facecolor='black', edgecolor='#3498db', lw=1.5))
-    dx=np.linspace(0, 8.5, 200); dy1=11.5-dx; dy2=8.5-dx
-    ax1.plot(dx, dy1,'-',c='#e74c3c',lw=3,zorder=2); ax1.plot(dx,dy2,'--',c='#f39c12',lw=3,dashes=(8,4),zorder=2)
-    ax1.text(8.7,3.0,'$D$',fontsize=16,weight='bold',c='#e74c3c',bbox=dict(boxstyle='circle,pad=0.4',facecolor='black',edgecolor='#e74c3c',lw=1.5))
-    ax1.text(8.7,0.2,"$D'$",fontsize=16,weight='bold',c='#f39c12',bbox=dict(boxstyle='circle,pad=0.4',facecolor='black',edgecolor='#f39c12',lw=1.5))
-    p1,p2=6.0,3.0; ax1.plot([0,q_s],[p1,p1],c='#777',ls='--',lw=1.5,dashes=(6,4),zorder=1); ax1.plot([0,q_s],[p2,p2],c='#777',ls='--',lw=1.5,dashes=(6,4),zorder=1)
-    ax1.plot(q_s,p1,'o',ms=11,c='#e74c3c',mec='white',mew=2.5,zorder=5); ax1.plot(q_s,p2,'o',ms=11,c='#f39c12',mec='white',mew=2.5,zorder=5)
-    ax1.text(q_s+0.6, p1, '$E_1$', fontsize=12, weight='bold'); ax1.text(q_s+0.6, p2, '$E_2$', fontsize=12, weight='bold')
-    
-    # Define the styling for the text boxes (This was defined here, but incorrectly referenced as 'props' later)
-    bbox_props = dict(boxstyle='round,pad=0.25',facecolor='black',edgecolor='#777',lw=0.8)
-    
-    ax1.text(-0.4,p1,'$p_1$',ha='right',va='center',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
-    ax1.text(-0.4,p2,'$p_2$',ha='right',va='center',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
-    ax1.text(q_s,-0.4,'$q^*$',ha='center',va='top',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
-    draw_bracket(ax1,-1.1,p2,-1.1,p1,'Price\nVolatility',c='#e74c3c',cap_inward=True); bx=7.5; draw_bracket(ax1,bx+0.3,8.5-bx,bx+0.3,11.5-bx,'Demand\nShift','vertical',-0.8,'#bbb')
-
-    # Chart 2: Alternative
-    setup_axes(ax2, 'Alternative System (Elastic Supply)')
-    p_s = 5.5; ax2.plot([0,11],[p_s,p_s],'#3498db',lw=3,zorder=3)
-    ax2.text(11.5, p_s+0.3,'$S$',ha='left',va='bottom',fontsize=16,weight='bold',color='#3498db',bbox=dict(boxstyle='round,pad=0.35',facecolor='black',edgecolor='#3498db',lw=1.5))
-    ax2.plot(dx,dy1,'-',c='#e74c3c',lw=3,zorder=2); ax2.plot(dx,dy2,'--',c='#f39c12',lw=3,dashes=(8,4),zorder=2)
-    ax2.text(8.7,3.0,'$D$',fontsize=16,weight='bold',c='#e74c3c',bbox=dict(boxstyle='circle,pad=0.4',facecolor='black',edgecolor='#e74c3c',lw=1.5))
-    ax2.text(8.7,0.2,"$D'$",fontsize=16,weight='bold',c='#f39c12',bbox=dict(boxstyle='circle,pad=0.4',facecolor='black',edgecolor='#f39c12',lw=1.5))
-    q1,q2=6.0,3.0; ax2.plot([q1,q1],[0,p_s],c='#777',ls='--',lw=1.5,dashes=(6,4),zorder=1); ax2.plot([q2,q2],[0,p_s],c='#777',ls='--',lw=1.5,dashes=(6,4),zorder=1)
-    ax2.plot(q1,p_s,'o',ms=11,c='#e74c3c',mec='white',mew=2.5,zorder=5); ax2.plot(q2,p_s,'o',ms=11,c='#f39c12',mec='white',mew=2.5,zorder=5)
-    ax2.text(q1,p_s+0.6,'$E_1$',fontsize=12,weight='bold',ha='center',va='bottom'); ax2.text(q2,p_s+0.6,'$E_2$',fontsize=12,weight='bold',ha='center',va='bottom')
-    
-    ax2.text(q1,-0.4,'$q_1$',ha='center',va='top',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
-    ax2.text(q2,-0.4,'$q_2$',ha='center',va='top',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
-    ax2.text(-0.4,p_s,'$p^*$',ha='right',va='center',fontsize=12,style='italic',weight='semibold',bbox=bbox_props)
-    
-    ax2.plot([-1.3,-0.2],[p_s,p_s],'-',c='#2ecc71',lw=3,zorder=4); ax2.text(-1.5,p_s,'Price\nStability',ha='right',va='center',fontsize=11,style='italic',c='#2ecc71',weight='bold',bbox=dict(boxstyle='round,pad=0.4',facecolor='#102510',edgecolor='#2ecc71',alpha=0.95,lw=1.5))
-    draw_bracket(ax2,q2,-1.3,q1,-1.3,'Supply\nAdjustment','horizontal',0.85,'#3498db',cap_inward=True); draw_bracket(ax2,bx+0.3,8.5-bx,bx+0.3,11.5-bx,'Demand\nShift','vertical',-0.8,'#bbb')
-    
-    cy=0.04;
-    fig.text(0.5,cy-0.01,'Comparison of Fixed vs. Flexible Supply Response',ha='center',va='top',fontsize=13,weight='semibold')
-    fig.text(0.5,cy-0.04,'Left: Inelastic supply, price volatility | Right: Elastic supply, price stability',ha='center',va='top',fontsize=11,style='italic',c='#aaa')
-    for ax in [ax1, ax2]: ax.grid(True,alpha=0.12,ls=':',lw=0.6,zorder=0); ax.set_axisbelow(True)
-    plt.savefig('figure_5_supply_volatility_model.png', dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor())
-    plt.show()
-
-
-def generate_tps_chart():
-    """
-    Reproduces Figure 6: Transaction Per Second (TPS) Capacity Comparison.
-    """
-    print("\nGenerating Figure 6: TPS Capacity Comparison...")
-    btc_tps = 6.0
-    mastercard_transactions_2024 = 159.4e9
-    visa_transactions_2024 = 303e9
+    print("\nGenerating Figure 5: Settlement-Layer-Matched Throughput Comparison (v5, corrected)...")
     seconds_in_year = 365.25 * 24 * 60 * 60
-    
-    mastercard_tps = mastercard_transactions_2024 / seconds_in_year
-    visa_tps = visa_transactions_2024 / seconds_in_year
-    
-    systems = ['Bitcoin\n(Realized Avg)', 'Mastercard\n(Switched)', 'Visa\n(Total Payments)']
-    tps_values = [btc_tps, mastercard_tps, visa_tps]
-    colors = ['#f2a900', '#eb001b', '#3498db']
-    
-    fig, ax = plt.subplots(figsize=(10, 7))
-    bars = ax.bar(systems, tps_values, color=colors)
-    ax.set_yscale('log')
-    ax.set_title('Transaction Per Second (TPS) Capacity Comparison (Log Scale) (Figure 6)', fontsize=16, pad=20)
-    ax.set_ylabel('Transactions Per Second (Log Scale)', fontsize=12)
-    ax.tick_params(axis='x', labelsize=11)
-    
-    for bar in bars:
-        yval = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width() / 2.0, yval, f'{yval:,.0f}', ha='center', va='bottom', fontsize=10, weight='bold', color='white')
-    
+    btc_tps = 6.5
+
+    fedwire_avg_daily_txns = 836_322  # Fed 2024 PFMI disclosure
+    fedwire_tps = fedwire_avg_daily_txns / 86400.0
+
+    t2_daily_low, t2_daily_high = 400_000, 450_000  # order-of-magnitude, disclosed as uncertain
+    t2_tps_low, t2_tps_high = t2_daily_low / 86400.0, t2_daily_high / 86400.0
+    t2_tps_mid = (t2_tps_low + t2_tps_high) / 2
+
+    mastercard_tps = 159.4e9 / seconds_in_year
+    visa_tps = 303e9 / seconds_in_year
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6.5))
+
+    ax1 = axes[0]
+    systems1 = ['Bitcoin L1\n(Settlement)', 'Fedwire\n(RTGS, USD)', 'T2\n(RTGS, EUR)\n[range]']
+    vals1 = [btc_tps, fedwire_tps, t2_tps_mid]
+    errs1 = [0, 0, (t2_tps_high - t2_tps_low) / 2]
+    bars1 = ax1.bar(systems1, vals1, yerr=errs1, capsize=6,
+                     color=[CB["orange"], CB["blue"], CB["sky"]])
+    ax1.set_ylim(0, max(vals1) * 1.5)
+    ax1.set_ylabel('Transactions Per Second (linear scale)')
+    ax1.set_title('Settlement Layer:\nBitcoin L1 vs. RTGS Systems', fontsize=12)
+    for b, v in zip(bars1, vals1):
+        ax1.text(b.get_x() + b.get_width()/2, b.get_height() + 0.3, f'{v:,.2f}',
+                  ha='center', va='bottom', fontsize=9, weight='bold')
+
+    ax2 = axes[1]
+    systems2 = ['Bitcoin L1\n(Settlement)', 'Mastercard\n(Retail Auth.)', 'Visa\n(Retail Auth.)']
+    vals2 = [btc_tps, mastercard_tps, visa_tps]
+    bars2 = ax2.bar(systems2, vals2, color=[CB["orange"], CB["vermillion"], CB["purple"]])
+    ax2.set_yscale('log')
+    ax2.set_ylabel('Transactions Per Second (log scale)')
+    ax2.set_title('Retail Layer:\nBitcoin L1 vs. Card-Network Authorization', fontsize=12)
+    for b in bars2:
+        ax2.text(b.get_x() + b.get_width()/2, b.get_height(), f'{b.get_height():,.0f}',
+                  ha='center', va='bottom', fontsize=9, weight='bold')
+
+    fig.suptitle('Transaction Throughput by Settlement Layer, Corrected (Fig. 5)', fontsize=15)
+    footnote(fig, "Fedwire TPS corrected in v5 using the Fed's own 2024 PFMI disclosure "
+                   "(836,322 avg. daily transactions). T2's exact 2024 transaction count is not "
+                   "cleanly published; shown here as an order-of-magnitude RANGE with that "
+                   "uncertainty disclosed, not a false-precision point estimate. This figure "
+                   "supports a forced-choice (trilemma) argument, not a claim that either panel "
+                   "alone settles whether Bitcoin's throughput is adequate -- see paper Sec. 4.")
+    plt.tight_layout(rect=[0, 0.06, 1, 0.94])
+    save_fig(fig, "figure_05_settlement_layer_comparison")
+    plt.close(fig)
+
+
+def fig06_ln_reliability_synthesis():
+    """
+    [REPLACES v4's fig06] v4 showed ONLY Waugh & Holz (2020) with no context.
+    v5 shows the 2020 mesh-probe numbers AND River Financial's 2023 single-hub
+    platform success rate side by side, with an explicit annotation on why
+    both are true and why the second does not refute the first -- it is the
+    centralization outcome Avarikioti et al. (2020) predict.
+    """
+    print("\nGenerating Figure 6: LN Reliability Synthesis (2020 mesh probe vs. 2023 hub reliability)...")
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5.5))
+
+    amounts = ['$0.01', '$10', '$50']
+    success = [72, 44.15, 30.93]
+    bars = ax1.bar(amounts, success, color=[CB["green"], CB["orange"], CB["vermillion"]])
+    ax1.set_ylim(0, 100)
+    ax1.set_xlabel('Payment Amount')
+    ax1.set_ylabel('Routing Success Rate (%)')
+    ax1.set_title('2020: Mesh-Wide Active Probe\n(Waugh & Holz, 4,626 nodes)', fontsize=11)
+    for b, v in zip(bars, success):
+        ax1.text(b.get_x() + b.get_width()/2, v + 1.5, f'{v:g}%', ha='center', fontsize=10, weight='bold')
+
+    labels2 = ['River platform\n(Aug 2023, 308k txns)']
+    vals2 = [99.7]
+    bars2 = ax2.bar(labels2, vals2, color=CB["blue"], width=0.5)
+    ax2.set_ylim(0, 105)
+    ax2.set_ylabel('Payment Success Rate (%)')
+    ax2.set_title('2023: Single Well-Capitalized\nCustodial Hub', fontsize=11)
+    for b, v in zip(bars2, vals2):
+        ax2.text(b.get_x() + b.get_width()/2, v + 1.5, f'{v:g}%', ha='center', fontsize=11, weight='bold')
+
+    fig.suptitle('Lightning Network Reliability: Mesh vs. Hub (Fig. 6)', fontsize=14)
+    footnote(fig, "The right panel is NOT a like-for-like re-measurement of the left panel: it "
+                   "reports one large, well-connected custodial node's own platform success rate, "
+                   "not decentralized mesh-wide reachability. The gap between the two is the "
+                   "predicted signature of the hub-and-spoke centralization formalized by "
+                   "Avarikioti et al. (2020) -- reliability gains arrived via centralization, not "
+                   "via a more reliable decentralized mesh. Sources: Waugh & Holz (2020); River "
+                   "Financial (2023).")
+    plt.tight_layout(rect=[0, 0.08, 1, 0.90])
+    save_fig(fig, "figure_06_ln_reliability_synthesis")
+    plt.close(fig)
+
+
+def fig07_ln_topology_schematic():
+    print("\nGenerating Figure 7: LN Topology, Mesh vs. Hub-and-Spoke (conceptual schematic)...")
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 5.5))
+    n = 9
+    angles = np.linspace(0, 2*np.pi, n, endpoint=False)
+    xs, ys = np.cos(angles), np.sin(angles)
+    for ax, title in [(ax1, 'Early Stage: Mesh-Like'), (ax2, 'Mature Stage: Hub-and-Spoke')]:
+        ax.set_xlim(-1.4, 1.4); ax.set_ylim(-1.4, 1.4)
+        ax.set_aspect('equal'); ax.axis('off')
+        ax.set_title(title, fontweight='bold')
+    for i in range(n):
+        for j in range(i+1, n):
+            if (i + j) % 2 == 0:
+                ax1.plot([xs[i], xs[j]], [ys[i], ys[j]], color='#999', lw=0.8, zorder=1)
+    ax1.scatter(xs, ys, s=140, color=CB["green"], edgecolor='black', zorder=2)
+    for i in range(1, n):
+        ax2.plot([0, xs[i]], [0, ys[i]], color='#999', lw=1.2, zorder=1)
+    ax2.scatter(xs[1:], ys[1:], s=100, color=CB["green"], edgecolor='black', zorder=2)
+    ax2.scatter([0], [0], s=320, color=CB["vermillion"], edgecolor='black', zorder=3)
+    ax2.text(0, -1.3, 'Hub (liquidity-concentrated node)', ha='center', fontsize=8.5)
+    fig.suptitle('Predicted Topological Evolution of the Lightning Network (Fig. 7)\n'
+                 'CONCEPTUAL SCHEMATIC, not a simulation or measurement', fontsize=12)
+    footnote(fig, "Deterministic, hand-placed schematic illustrating the mesh-to-hub-and-spoke "
+                   "claim formalized by Avarikioti et al. (2020).")
+    plt.tight_layout(rect=[0, 0.06, 1, 0.88])
+    save_fig(fig, "figure_07_ln_topology_schematic")
+    plt.close(fig)
+
+
+def fig08_mv_py_mismatch():
+    print("\nGenerating Figure 8: Fixed-Supply / Growing-Output Mismatch...")
+    years = np.arange(0, 21)
+    M = np.full_like(years, 100.0, dtype=float)
+    Y = 100.0 * (1.03) ** years
+    V = 1.0
+    P = (M * V) / Y
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5.5))
+    ax1.plot(years, M, color=CB["blue"], lw=2.2, label='Money Supply (M), fixed')
+    ax1.plot(years, Y, color=CB["green"], lw=2.2, label='Real Output (Y), 3%/yr growth')
+    ax1.set_xlabel('Years'); ax1.set_ylabel('Index (Year 0 = 100)')
+    ax1.set_title('Fixed M vs. Growing Y'); ax1.legend()
+    ax2.plot(years, P, color=CB["vermillion"], lw=2.2)
+    ax2.set_xlabel('Years'); ax2.set_ylabel('Implied Price Level (P), Year 0 = 100')
+    ax2.set_title('Implied Price Level from M\u00b7V = P\u00b7Y')
+    fig.suptitle('Fixed-Supply vs. Growing-Output Mismatch (Fig. 8)\nILLUSTRATIVE IDENTITY', fontsize=13)
+    footnote(fig, "Deterministic illustration of M*V=P*Y under fixed money supply, constant "
+                   "velocity, and 3%/year output growth -- not a measurement of Bitcoin's actual M,V,P.")
     plt.tight_layout()
-    plt.savefig('figure_6_tps_comparison.png', dpi=300)
-    plt.show()
+    save_fig(fig, "figure_08_mv_py_mismatch")
+    plt.close(fig)
 
 
-def generate_centralization_parameter_map():
+def fig09_debt_burden_deflation(annual_deflation=0.03, years=30):
     """
-    Reproduces Figure 9: Parameter map for social optimum in the Lightning Network game.
+    [ENHANCED IN v5] Left panel unchanged from v4 (correct deterministic
+    calculation). NEW right panel illustrates the benign-vs-malignant
+    deflation distinction the paper's text now makes explicit: the 1920-21
+    vs. 1929-30 comparison, where the same direction of price change had
+    opposite real consequences depending on pre-existing private leverage.
+    This is a schematic/illustrative panel (stylized, not a fitted historical
+    reconstruction) making a qualitative point already sourced in the text
+    to Dimand (1994).
     """
-    print("\nGenerating Figure 9: Lightning Network Centralization Map...")
-    b_vals = np.linspace(0, 2, 500); c_vals = np.linspace(0, 2, 500)
-    B, C = np.meshgrid(b_vals, c_vals)
-    Z = np.zeros_like(B)
-    Z[C < B] = 0; Z[(C >= B) & (C <= B + 0.5)] = 1; Z[C > B + 0.5] = 2
-    fig, ax = plt.subplots(figsize=(10, 8))
-    colors = ['#ffeda0', '#a1d99b', '#9ecae1']
-    cmap = plt.matplotlib.colors.ListedColormap(colors)
-    ax.imshow(Z, origin='lower', extent=[0, 2, 0, 2], cmap=cmap, aspect='auto', interpolation='nearest')
-    ax.plot(b_vals, b_vals, color='white', linestyle='--', linewidth=1.5, label=r'Boundary: $c = b$')
-    ax.plot(b_vals, b_vals + 0.5, color='white', linestyle='-.', linewidth=1.5, label=r'Boundary: $c = b + 0.5$')
-    ax.set_xlabel('Incentive to Earn Routing Fees (b)'); ax.set_ylabel('Incentive for Low-Cost Personal Transactions (c)')
-    ax.set_title("Social Optimum Topologies in a Payment Network Creation Game (Figure 9)", fontsize=16, pad=15)
-    legend_patches = [mpatches.Patch(color=colors[2], label=r'Complete Graph ($c > b + 0.5$)'),
-                      mpatches.Patch(color=colors[1], label=r'Star Graph ($b \leq c \leq b + 0.5$)'),
-                      mpatches.Patch(color=colors[0], label=r'Path Graph ($c < b$)')]
-    handles, labels = ax.get_legend_handles_labels()
-    ax.legend(handles=handles + legend_patches, loc='upper left')
-    ax.set_xlim(0, 2); ax.set_ylim(0, 2); ax.grid(True, which="both", ls=":", alpha=0.6)
+    print(f"\nGenerating Figure 9: Real Debt Burden Under Deflation + Malignant/Benign Distinction...")
+    t = np.arange(0, years + 1)
+    real_burden_multiple = (1 - annual_deflation) ** (-t)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+
+    ax1.plot(t, real_burden_multiple, color=CB["vermillion"], lw=2.4)
+    ax1.fill_between(t, 1, real_burden_multiple, color=CB["vermillion"], alpha=0.15)
+    ax1.axhline(1, color='black', lw=0.8, ls='--')
+    ax1.set_xlabel('Years Into a Fixed-Payment Debt Contract')
+    ax1.set_ylabel('Real Burden Multiple (relative to Year 0)')
+    ax1.set_title(f'Real Burden of a Fixed Nominal Payment\nUnder {annual_deflation:.0%}/yr Deflation', fontsize=11)
+    end_val = real_burden_multiple[-1]
+    ax1.annotate(f'{end_val:.2f}x after {years} years', xy=(years, end_val),
+                xytext=(years - 8, end_val - 0.35), fontsize=9, weight='bold',
+                arrowprops=dict(arrowstyle='->', color='black'))
+
+    years_stylized = np.array([0, 1, 2, 3])
+    low_leverage = np.array([0, -6, -3, 1])   # 1920-21-style: sharp but brief
+    high_leverage = np.array([0, -6, -18, -30])  # 1929-30-style: cascades via leverage
+    ax2.plot(years_stylized, low_leverage, 'o-', color=CB["green"], lw=2.4,
+             label='Low pre-existing leverage\n(1920-21 pattern)')
+    ax2.plot(years_stylized, high_leverage, 's-', color=CB["vermillion"], lw=2.4,
+             label='High pre-existing leverage\n(1929-30 pattern)')
+    ax2.axhline(0, color='black', lw=0.8)
+    ax2.set_xlabel('Years After Deflationary Shock Begins')
+    ax2.set_ylabel('Stylized Real Output Path (%)')
+    ax2.set_title('Same Deflation, Different Outcome:\nMechanism is Leverage, Not Sign', fontsize=11)
+    ax2.legend(fontsize=8, loc='lower left')
+
+    fig.suptitle('Debt-Deflation: Magnitude (left) and Mechanism (right) (Fig. 9)', fontsize=13)
+    footnote(fig, f"Left: deterministic calculation real_burden(t)=(1-{annual_deflation:.2f})^(-t). "
+                   "Right: STYLIZED, illustrative curves (not a fitted historical reconstruction) "
+                   "making the qualitative point, sourced to Dimand (1994), that 1920-21 and "
+                   "1929-30 were both deflations but diverged sharply because of pre-existing "
+                   "private-sector leverage -- the mechanism this paper's deflation critique "
+                   "actually depends on, not deflation's sign alone.")
     plt.tight_layout()
-    plt.savefig("figure_9_centralization_parameter_map.png", dpi=300)
-    plt.show()
+    save_fig(fig, "figure_09_debt_burden_deflation")
+    plt.close(fig)
 
 
-def generate_topology_figure():
-    """
-    Figure 10: Generates a visualization of the Core-Periphery structure evolution.
-    Simulates the 'Network Creation Game' via Preferential Attachment (Barabasi-Albert).
-    Adapted for script dark theme with high-contrast edges.
-    """
-    print("Generating Figure 10: Lightning Network Topology...")
-    
-    # Use script global style (dark background)
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 7))
-    
-    # Parameters for simulation
-    n_early = 80; m_early = 2
-    n_late = 400; m_late = 2 
-    
-    # 1. Early Stage Simulation
-    G1 = nx.barabasi_albert_graph(n_early, m_early, seed=42)
-    degrees1 = dict(G1.degree())
-    threshold1 = np.percentile(list(degrees1.values()), 95)
-    
-    node_colors1 = []; node_sizes1 = []
-    for node in G1.nodes():
-        if degrees1[node] >= threshold1:
-            node_colors1.append('#c0392b') # Deep Red (Core)
-            node_sizes1.append(degrees1[node] * 8)
+def fig10_11_digital_gold_narrative(data):
+    print("\nGenerating Figure 10: Drawdowns...")
+    btc = data[TICKERS['Bitcoin']].dropna()
+    dd = (btc - btc.cummax()) / btc.cummax()
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 7.5), sharex=True, gridspec_kw={'height_ratios':[3,1]})
+    ax1.plot(btc.index, btc, color=CB["blue"], label='Bitcoin Price (USD)')
+    ax1.set_yscale('log'); ax1.legend(); ax1.set_ylabel('Price (log scale)')
+    ax1.set_title('Bitcoin Price and Historical Drawdowns (Fig. 10)')
+    ax2.plot(dd.index, dd*100, color=CB["vermillion"])
+    ax2.fill_between(dd.index, dd*100, 0, color=CB["vermillion"], alpha=0.3)
+    ax2.set_ylabel('Drawdown (%)')
+    max_dd = dd.min()*100
+    ax2.text(dd.idxmin(), max_dd, f'Max DD: {max_dd:.1f}%', ha='right', va='top', fontsize=9)
+    plt.tight_layout()
+    save_fig(fig, "figure_10_drawdowns")
+    plt.close(fig)
+
+    print("\nGenerating Figure 11: Rolling Correlation + DCC-GARCH + [NEW] Macro-Liquidity Control...")
+    pair_cols = [TICKERS['Bitcoin'], TICKERS['S&P 500']]
+    log_returns = np.log(data[pair_cols] / data[pair_cols].shift(1)).dropna() * 100
+    rolling_corr = log_returns[TICKERS['Bitcoin']].rolling(60).corr(log_returns[TICKERS['S&P 500']])
+
+    fig2, ax = plt.subplots(figsize=(12, 6.5))
+    ax.plot(rolling_corr.index, rolling_corr, color=CB["grey"], alpha=0.5, lw=1.0,
+            label='60-Day Rolling Pearson (naive baseline)')
+
+    if HAS_ARCH:
+        dcc, params = dcc_garch_bivariate(log_returns, pair_cols)
+        if dcc is not None:
+            ax.plot(dcc.index, dcc, color=CB["vermillion"], lw=1.6,
+                    label=f'DCC-GARCH(1,1), raw (a={params["a"]:.3f}, b={params["b"]:.3f})')
+
+        macro_cols = [TICKERS['Bitcoin'], TICKERS['S&P 500'], TICKERS['US Dollar'], TICKERS['VIX']]
+        if all(c in data.columns for c in macro_cols):
+            macro_returns = np.log(data[macro_cols] / data[macro_cols].shift(1)).dropna() * 100
+            partial = rolling_partial_correlation(
+                macro_returns, TICKERS['Bitcoin'], TICKERS['S&P 500'],
+                [TICKERS['US Dollar'], TICKERS['VIX']], window=60)
+            ax.plot(partial.index, partial, color=CB["blue"], lw=1.6, ls='--',
+                    label='60-Day Partial Correlation\n(net of DXY & VIX co-movement)')
         else:
-            node_colors1.append('#27ae60') # Green (Periphery)
-            node_sizes1.append(30)
+            print("  [WARN] VIX or Dollar Index data unavailable; partial-correlation panel skipped.")
+    else:
+        print("  [WARN] `arch` not installed; DCC-GARCH panel skipped.")
 
-    pos1 = nx.spring_layout(G1, k=0.25, iterations=50, seed=42)
-    
-    nx.draw_networkx_nodes(G1, pos1, node_color=node_colors1, node_size=node_sizes1, ax=ax1, alpha=0.9)
-    # EDITED: Changed edge_color to bright silver (#e0e0e0) and increased alpha for visibility on black
-    nx.draw_networkx_edges(G1, pos1, alpha=0.5, width=1.0, edge_color='#e0e0e0', ax=ax1)
-    ax1.set_title("Phase 1: Early Network Formation\n(Emergent Hubs)", fontweight='bold', color='white')
-    ax1.axis('off')
-
-    # 2. Mature Stage Simulation
-    G2 = nx.barabasi_albert_graph(n_late, m_late, seed=100)
-    degrees2 = dict(G2.degree())
-    threshold2 = np.percentile(list(degrees2.values()), 98)
-    
-    node_colors2 = []; node_sizes2 = []
-    for node in G2.nodes():
-        if degrees2[node] >= threshold2:
-            node_colors2.append('#c0392b') 
-            node_sizes2.append(degrees2[node] * 5)
-        else:
-            node_colors2.append('#27ae60') 
-            node_sizes2.append(15)
-
-    pos2 = nx.spring_layout(G2, k=0.15, iterations=80, seed=100)
-    
-    nx.draw_networkx_nodes(G2, pos2, node_color=node_colors2, node_size=node_sizes2, ax=ax2, alpha=0.85)
-    # EDITED: Changed edge_color to bright silver (#e0e0e0) and increased alpha for visibility on black
-    nx.draw_networkx_edges(G2, pos2, alpha=0.4, width=0.6, edge_color='#e0e0e0', ax=ax2)
-    ax2.set_title("Phase 2: Mature Oligopoly\n(Structural Centralization)", fontweight='bold', color='white')
-    ax2.axis('off')
-
-    # Legend
-    legend_elements = [
-        Line2D([0], [0], marker='o', color='w', label='Core (Liquidity Hubs)',
-               markerfacecolor='#c0392b', markersize=10),
-        Line2D([0], [0], marker='o', color='w', label='Periphery (Users)',
-               markerfacecolor='#27ae60', markersize=8)
-    ]
-    # Legend text color handled by global params
-    fig.legend(handles=legend_elements, loc='lower center', ncol=2, bbox_to_anchor=(0.5, 0.02))
-    
+    ax.axhline(0, color='black', linestyle='--', lw=1)
+    ax.set_title('Bitcoin vs. S&P 500: Raw Correlation vs. Macro-Liquidity-Controlled (Fig. 11)')
+    ax.set_ylabel('Correlation')
+    ax.legend(fontsize=9)
+    footnote(fig2, "NEW IN v5: the dashed blue line nets out each 60-day window's linear "
+                    "co-movement with the Dollar Index (UUP) and the VIX before computing the "
+                    "Bitcoin-S&P 500 correlation, directly testing whether the raw DCC-GARCH "
+                    "correlation spike during 2020/2022 stress periods is a shared macro-liquidity "
+                    "artifact or survives the confound. Where the dashed line stays well below the "
+                    "solid red line during stress windows, the macro-confound critique has merit; "
+                    "where it does not, the 'Bitcoin behaves like risk-on tech' reading survives it.")
     plt.tight_layout()
-    plt.subplots_adjust(bottom=0.1)
-    plt.savefig('figure_10_ln_topology.png', dpi=300, bbox_inches='tight')
-    plt.show()
+    save_fig(fig2, "figure_11_correlation_dcc")
+    plt.close(fig2)
 
 
-
-def generate_gini_figure():
+def fig12_attack_cost_breakdown():
     """
-    Figure 11: Generates the quantitative analysis of centralization (Gini Coeffs).
-    Creates synthetic data distributions that replicate the statistical findings
-    of Vallarano et al. (Observed vs Expected Null Models).
+    [UPDATED IN v5] v4 showed only Harvey's Oct-2025 $6B static estimate. v5
+    shows BOTH the original 2025 estimate and Harvey's own July-2026 update to
+    ~$8B, which crucially adds a derivatives-shorting profit mechanism -- the
+    threat model got MORE credible on the latest public evidence, not less,
+    contrary to the "static cost, no motive" line of argument.
     """
-    print("Generating Figure 11: Quantitative Centralization Analysis...")
-    
-    fig, axes = plt.subplots(2, 2, figsize=(12, 12))
-    axes = axes.flatten()
-    metrics = ['Degree', 'Closeness', 'Betweenness', 'Eigenvector']
-    
-    np.random.seed(42)
-    n_points = 100
-    
-    for i, metric in enumerate(metrics):
-        ax = axes[i]
-        expected = np.linspace(0.1, 0.9, n_points)
-        
-        if metric == 'Degree':
-            noise = np.random.normal(0, 0.01, n_points)
-            observed = expected + noise
-        elif metric == 'Betweenness':
-            noise = np.random.normal(0, 0.02, n_points)
-            observed = expected + (expected * 0.15) + noise
-            observed = np.clip(observed, 0, 0.99)
-        elif metric == 'Closeness':
-            noise = np.random.normal(0, 0.03, n_points)
-            observed = expected + noise
-        elif metric == 'Eigenvector':
-            noise = np.random.normal(0, 0.02, n_points)
-            observed = expected + (expected**2 * 0.1) + noise
-            
-        # Scatter plot
-        ax.scatter(expected, observed, alpha=0.7, s=25, c='#3498db', edgecolor='w', linewidth=0.5)
-        
-        # Identity line (y=x)
-        ax.plot([0, 1], [0, 1], 'r--', linewidth=1.5, label='Null Model Identity')
-        
-        ax.set_title(f"{metric} Centrality", fontweight='bold', color='white')
-        ax.set_xlabel(f"Expected Gini (Null Model)", color='white')
-        ax.set_ylabel(f"Observed Gini (Empirical)", color='white')
-        ax.set_xlim(0, 1.0)
-        ax.set_ylim(0, 1.0)
-        
-        if metric == 'Betweenness':
-            ax.text(0.5, 0.1, "Structural\nCentralization\nGap", 
-                    fontsize=10, color='white', ha='center',
-                    bbox=dict(facecolor='#c0392b', alpha=0.8, edgecolor='white'))
+    print("\nGenerating Figure 12: 51% Attack Cost, 2025 vs. 2026 Estimates...")
+    components_2025 = {'Hardware\n(ASICs)': 4.6, 'Data Center\nCapEx': 1.34, 'Energy\n(1 week)': 0.13}
+    total_2025 = sum(components_2025.values())
+    total_2026 = 8.0
 
-    lines, labels = axes[0].get_legend_handles_labels()
-    fig.legend(lines, labels, loc='upper center', bbox_to_anchor=(0.5, 1.02), ncol=2)
-    
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 6))
+
+    bottom = 0
+    for (label, val), color in zip(components_2025.items(), [CB["blue"], CB["sky"], CB["orange"]]):
+        ax1.bar(['Oct 2025\nestimate'], [val], bottom=bottom, label=f'{label} (${val:.2f}B)', color=color)
+        bottom += val
+    ax1.text(0, total_2025 + 0.15, f'Total: ${total_2025:.2f}B', ha='center', fontweight='bold')
+    ax1.set_ylabel('Cost (USD, Billions)')
+    ax1.set_title('Static Hardware/Infrastructure Cost\n(Harvey, Oct 2025)', fontsize=11)
+    ax1.legend(loc='upper right', fontsize=8)
+    ax1.set_ylim(0, total_2025 * 1.5)
+
+    bars2 = ax2.bar(['Oct 2025\n(~$6B, static cost)', 'Jul 2026\n(~$8B, + derivatives\nshort profit motive)'],
+                     [total_2025, total_2026], color=[CB["grey"], CB["vermillion"]])
+    ax2.set_ylabel('Estimated Cost (USD, Billions)')
+    ax2.set_title('The Estimate Moved Up, Not Down,\nOnce a Profit Motive Was Added', fontsize=11)
+    for b in bars2:
+        ax2.text(b.get_x() + b.get_width()/2, b.get_height() + 0.1, f'${b.get_height():,.1f}B',
+                  ha='center', va='bottom', fontsize=10, weight='bold')
+
+    fig.suptitle("51% Attack Economics: Harvey's Own Revision (Fig. 12)", fontsize=14)
+    footnote(fig, "REPRODUCED FROM CITED SOURCES: Harvey (Oct. 2025) estimated ~$6B in static "
+                   "hardware/infrastructure cost for a one-week attack. Harvey's own July 2026 "
+                   "update raises this to ~$8B and adds that combining majority hashpower with a "
+                   "large short position in Bitcoin derivatives makes the attack a rational, "
+                   "profit-motivated trade rather than a costly act with no return -- a mechanism "
+                   "the static hardware-cost accounting omits entirely. Neither estimate accounts "
+                   "for hardware-supply inelasticity or grid-procurement lead times, which would "
+                   "push the effective cost higher still; neither accounts for the possibility of a "
+                   "defensive proof-of-work fork, which would push the attacker's realized payoff "
+                   "lower. Both estimates should be read as bounds on a moving target, not as a "
+                   "single settled number.")
+    plt.tight_layout(rect=[0, 0.08, 1, 0.90])
+    save_fig(fig, "figure_12_attack_cost_breakdown")
+    plt.close(fig)
+
+
+def fig13_mining_pool_concentration():
+    """
+    [UPDATED IN v5] v4 showed a single point estimate (43%/65%) as of Nov
+    2025. v5 shows a RANGE reflecting real disagreement/volatility across
+    independent trackers (Hashrate Index, B10C, Spark) in 2025-2026, and adds
+    a note on Stratum V2 adoption as a partial, real mitigation of pool-level
+    censorship risk specifically (not of hashrate concentration itself).
+    """
+    print("\nGenerating Figure 13: Mining Pool Concentration (range across sources, 2025-2026)...")
+    labels = ['Top 2 Pools\n(Foundry USA + AntPool)', 'Top 4-5 Pools\n(cumulative)']
+    low = [43, 65]
+    high = [57, 76]
+    mid = [(l+h)/2 for l, h in zip(low, high)]
+    err = [(h-l)/2 for l, h in zip(low, high)]
+
+    fig, ax = plt.subplots(figsize=(8.5, 5.5))
+    bars = ax.barh(labels, mid, xerr=err, capsize=8, color=[CB["vermillion"], CB["orange"]])
+    ax.set_xlim(0, 100)
+    ax.set_xlabel('Cumulative Share of Network Hashrate (%), range across trackers')
+    ax.set_title('Bitcoin Mining Pool Concentration, 2025-2026 (Fig. 13)')
+    for b, l, h in zip(bars, low, high):
+        ax.text(h + 2, b.get_y() + b.get_height()/2, f'{l}-{h}%', va='center', fontsize=10, weight='bold')
+    ax.text(2, -0.85, 'Stratum V2 (adopted by pools representing ~75% of hashrate as of 2026) lets '
+                       'individual miners build their own block templates,\nmitigating pool-level '
+                       'transaction censorship specifically -- it does NOT reduce hashrate '
+                       'concentration or 51%-reorg risk.', fontsize=8, style='italic', color='#444444',
+                       transform=ax.transData)
+    footnote(fig, "REPRODUCED AS A RANGE across independent trackers (Hashrate Index; B10C, 2025; "
+                   "Spark, 2026), since single-point estimates for this metric swing by several "
+                   "points week to week and no single tracker should be presented as definitive.")
     plt.tight_layout()
-    plt.savefig('figure_11_ln_centralization_quantitative.png', dpi=300, bbox_inches='tight')
-    plt.show()
+    save_fig(fig, "figure_13_mining_pool_concentration")
+    plt.close(fig)
 
 
-def generate_systemic_shock_chart():
-    """
-    Reproduces Figure 16: Systemic Shock Analysis (Hashrate/Mempool during 2021 Blackout).
-    """
-    print("\nGenerating Figure 16: Systemic Shock Analysis...")
-    
-    # 1. Data Generation
-    start_date = pd.Timestamp('2021-04-02')
-    end_date = pd.Timestamp('2021-04-30')
-
-    # --- Top Chart: Hashrate ---
-    dates_hourly = pd.date_range(start=start_date, end=end_date, freq='3h')
-    np.random.seed(123)
-    hashrate_values = []
-    for date in dates_hourly:
-        noise = np.random.normal(0, 28) 
-        if date < pd.Timestamp('2021-04-16'):
-            val = 168 + noise
-        elif date < pd.Timestamp('2021-04-23'):
-            val = 130 + np.random.normal(0, 22) 
-        else:
-            val = 160 + noise
-        val = max(20, min(val, 280))
-        hashrate_values.append(val)
-    df_hash = pd.DataFrame({'Date': dates_hourly, 'Hashrate': hashrate_values})
-
-    # --- Bottom Chart: Mempool ---
-    dates_daily = pd.date_range(start=start_date, end=end_date, freq='D')
-    mempool_points = [
-        64, 73, 72, 50, 48, 58, 59, 52, # Apr 2 - Apr 9
-        65, 50, 45, 50, 62, 94,         # Apr 10 - Apr 15
-        81,                             # Apr 16 (The dip before the rise)
-        98, 155, 151, 163, 185, 195,    # The ascent
-        205, 196, 150, 97, 85, 82, 75   # The peak and decline
-    ]
-    if len(mempool_points) < len(dates_daily):
-        mempool_points += [75] * (len(dates_daily) - len(mempool_points))
-    mempool_points = mempool_points[:len(dates_daily)]
-    
-    df_mempool_daily = pd.DataFrame({'Date': dates_daily, 'Unconfirmed': mempool_points})
-    df_mempool_daily.set_index('Date', inplace=True)
-    df_mempool = df_mempool_daily.resample('1h').interpolate(method='linear')
-    df_mempool.reset_index(inplace=True)
-    common_dates = df_hash['Date']
-    df_mempool = df_mempool[df_mempool['Date'].isin(common_dates)]
-
-    # 2. Plotting
-    fig = plt.figure(figsize=(14, 9))
-    gs = gridspec.GridSpec(2, 1, height_ratios=[1, 1], hspace=0.08)
-
-    # --- Top Panel: Hashrate ---
-    ax1 = plt.subplot(gs[0])
-    threshold_hash = 160 
-    ax1.plot(df_hash['Date'], df_hash['Hashrate'], color='#8899a6', alpha=0.7, linewidth=1)
-    ax1.fill_between(df_hash['Date'], df_hash['Hashrate'], threshold_hash, 
-                     where=(df_hash['Hashrate'] >= threshold_hash),
-                     interpolate=True, color='#3498DB', alpha=0.3, label='Healthy Hashrate')
-    ax1.fill_between(df_hash['Date'], df_hash['Hashrate'], threshold_hash, 
-                     where=(df_hash['Hashrate'] < threshold_hash),
-                     interpolate=True, color='#e74c3c', alpha=0.4, label='Power Loss Impact')
-
-    ax1.set_ylabel('Mining Power (EH/s)', fontsize=11)
-    ax1.set_ylim(0, 280)
-    ax1.set_xlim(start_date, end_date)
-    ax1.grid(True, which='major', axis='y', linestyle=':', alpha=0.4)
-    ax1.tick_params(labelbottom=False)
-    ax1.spines['top'].set_visible(False)
-    ax1.spines['right'].set_visible(False)
-    ax1.spines['bottom'].set_visible(False)
-    ax1.text(pd.Timestamp('2021-04-19'), 90, "HASH RATE DROP\n(-24%)", 
-             color='#e74c3c', fontweight='bold', ha='center', fontsize=10)
-
-    # --- Bottom Panel: Mempool ---
-    ax2 = plt.subplot(gs[1], sharex=ax1)
-    threshold_mempool = 80
-    ax2.plot(df_mempool['Date'], df_mempool['Unconfirmed'], color='#d35400', alpha=0.9, linewidth=1.5)
-    ax2.fill_between(df_mempool['Date'], df_mempool['Unconfirmed'], 0, 
-                     where=(df_mempool['Unconfirmed'] <= threshold_mempool),
-                     interpolate=True, color='#7f8c8d', alpha=0.3)
-    ax2.fill_between(df_mempool['Date'], df_mempool['Unconfirmed'], 0, 
-                     where=(df_mempool['Unconfirmed'] > threshold_mempool),
-                     interpolate=True, color='#e67e22', alpha=0.6, label='Congestion Spike')
-
-    ax2.set_ylabel('Unconfirmed TX (Thousands)', fontsize=11)
-    ax2.set_ylim(0, 220)
-    ax2.grid(True, which='major', axis='y', linestyle=':', alpha=0.4)
-    ax2.spines['top'].set_visible(False)
-    ax2.spines['right'].set_visible(False)
-    
-    # Date Ticks using F-strings
-    ticks = [pd.Timestamp('2021-04-02'), pd.Timestamp('2021-04-09'), 
-             pd.Timestamp('2021-04-16'), pd.Timestamp('2021-04-23'), pd.Timestamp('2021-04-30')]
-    ax2.set_xticks(ticks)
-    ax2.set_xticklabels([f"{t.strftime('%b')} {t.day}" for t in ticks], fontsize=11)
-    ax2.text(pd.Timestamp('2021-04-24'), 210, "PEAK CONGESTION", 
-             color='#e67e22', fontweight='bold', ha='center', fontsize=10)
-
-    # --- Event Window Overlay ---
-    rect_start = pd.Timestamp('2021-04-16')
-    rect_end = pd.Timestamp('2021-04-23')
-    for ax in [ax1, ax2]:
-        ax.axvspan(rect_start, rect_end, color='#f1c40f', alpha=0.15, zorder=-2)
-        ax.axvline(rect_start, color='#95a5a6', linestyle=':', linewidth=1.2)
-        ax.axvline(rect_end, color='#95a5a6', linestyle=':', linewidth=1.2)
-        ax.axvline(pd.Timestamp('2021-04-09'), color='#555555', linestyle=':', linewidth=1)
-        ax.axvline(pd.Timestamp('2021-04-30'), color='#555555', linestyle=':', linewidth=1)
-
-    fig.suptitle('The Bitcoin Blackout: Systemic Shock Analysis (Figure 16)', y=0.94, fontsize=16, fontweight='bold')
-    ax1.legend(loc='upper right', frameon=False, fontsize=9)
-    plt.subplots_adjust(top=0.88, bottom=0.1, left=0.1, right=0.95)
-    
-    plt.savefig('figure_16_systemic_shock_analysis.png', dpi=300)
-    plt.show()
-
-
-def analyze_digital_gold_narrative(data):
-    """
-    Generates plots related to the 'digital gold' narrative:
-    Drawdown Analysis (Figure 17) and Correlation Analysis (Figure 18).
-    """
-    print("\nGenerating Figure 17: Bitcoin Price and Historical Drawdowns...")
-    btc_price = data[TICKERS['Bitcoin']].dropna()
-    previous_peaks = btc_price.cummax()
-    drawdowns = (btc_price - previous_peaks) / previous_peaks
-    
-    fig_draw, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
-    
-    ax1.plot(btc_price.index, btc_price, label='Bitcoin Price (USD)', color='#3498db')
-    ax1.set_yscale('log'); ax1.set_title('Bitcoin Price and Historical Drawdowns (Figure 17)', fontsize=16)
-    ax1.set_ylabel('Price (USD, Log Scale)'); ax1.legend(); ax1.grid(True, which="both", ls="--", color="#555555")
-    
-    ax2.plot(drawdowns.index, drawdowns * 100, label='Drawdown', color='#e74c3c')
-    ax2.fill_between(drawdowns.index, drawdowns * 100, 0, color='#e74c3c', alpha=0.4)
-    ax2.set_ylabel('Drawdown (%)'); ax2.set_xlabel('Date')
-    max_dd = drawdowns.min() * 100
-    ax2.text(drawdowns.idxmin(), max_dd, f'Max DD: {max_dd:.1f}%', ha='right', va='top', color='white', fontsize=10)
-    
-    plt.tight_layout(); plt.savefig('figure_17_drawdowns.png', dpi=300); plt.show()
-    
-    print("\nGenerating Figure 18: Bitcoin vs. S&P 500 Rolling Correlation...")
-    sp500_ticker = TICKERS['S&P 500']; btc_ticker = TICKERS['Bitcoin']
-    log_returns = np.log(data[[btc_ticker, sp500_ticker]] / data[[btc_ticker, sp500_ticker]].shift(1)).dropna()
-    rolling_corr = log_returns[btc_ticker].rolling(window=60).corr(log_returns[sp500_ticker])
-    
-    fig_corr, ax_corr = plt.subplots(figsize=(12, 6))
-    rolling_corr.plot(ax=ax_corr, color='#9b59b6')
-    ax_corr.set_title('60-Day Rolling Correlation: Bitcoin vs. S&P 500 (Figure 18)', fontsize=16)
-    ax_corr.set_ylabel('Pearson Correlation Coefficient'); ax_corr.axhline(0, color='white', linestyle='--', lw=1)
-    peak_corr = rolling_corr.max()
-    ax_corr.text(rolling_corr.idxmax(), peak_corr, f'Peak: {peak_corr:.2f}', ha='center', va='bottom', color='white', fontsize=10)
-    
-    plt.tight_layout(); plt.savefig('figure_18_rolling_correlation.png', dpi=300); plt.show()
-
-
-def generate_climate_damages_jones_chart():
-    """
-    Reproduces Figure 19: Climate Damages Analysis based on Jones et al. (2022).
-    Visualizes comparative damages, Bitcoin specific temporal data, and category averages.
-    Adapted to the script's dark theme.
-    """
-    print("\nGenerating Figure 19: Climate Damages Analysis (Jones et al. 2022)...")
-
-    # --- DATA FROM JONES ET AL. (2022) ---
-    commodities_data = {
-        'Coal': {'damage': 95, 'color': '#34495e', 'category': 'fossil'},
-        'Natural Gas': {'damage': 46, 'color': '#34495e', 'category': 'fossil'},
-        'Gasoline': {'damage': 41, 'color': '#c0392b', 'category': 'fossil'},
-        'Bitcoin (avg)': {'damage': 35, 'color': '#f39c12', 'category': 'crypto'},
-        'Beef': {'damage': 33, 'color': '#8e44ad', 'category': 'agriculture'},
-        'Crude Oil': {'damage': 25, 'color': '#34495e', 'category': 'fossil'},
-        'Gold': {'damage': 4, 'color': '#f1c40f', 'category': 'metal'},
-        'Solar': {'damage': 3, 'color': '#27ae60', 'category': 'renewable'},
-    }
-    bitcoin_temporal = {
-        'years': [2016, 2017, 2018, 2019, 2020, 2021],
-        'damages': [16, 18, 37, 53, 82, 25]
-    }
-
-    # --- FIGURE SETUP ---
-    # Using global dark theme, so facecolor is black by default via plt.style
-    fig = plt.figure(figsize=(16, 9))
-    gs = gridspec.GridSpec(2, 2, height_ratios=[2, 1], width_ratios=[1.3, 1], 
-                           hspace=0.35, wspace=0.3)
-
-    # --- PANEL A: COMMODITY COMPARISON (MAIN) ---
-    ax1 = fig.add_subplot(gs[0, 0])
-
-    items = list(commodities_data.keys())
-    damages = [commodities_data[k]['damage'] for k in items]
-    colors = [commodities_data[k]['color'] for k in items]
-
-    sorted_indices = np.argsort(damages)[::-1]
-    items_sorted = [items[i] for i in sorted_indices]
-    damages_sorted = [damages[i] for i in sorted_indices]
-    colors_sorted = [colors[i] for i in sorted_indices]
-
-    y_pos = np.arange(len(items_sorted))
-
-    # Bars with black edges for contrast
-    bars = ax1.barh(y_pos, damages_sorted, color=colors_sorted, 
-                    edgecolor='black', linewidth=1.5, height=0.7, alpha=0.9)
-
-    # Highlight Bitcoin
-    bitcoin_idx = items_sorted.index('Bitcoin (avg)')
-    bars[bitcoin_idx].set_edgecolor('#d35400')
-    bars[bitcoin_idx].set_linewidth(2.5)
-    bars[bitcoin_idx].set_hatch('///')
-    
-    ax1.set_yticks(y_pos)
-    ax1.set_yticklabels(items_sorted, fontsize=12, fontweight='bold', color='white')
-    ax1.invert_yaxis()
-    ax1.set_xlabel('Climate Damages (% of Market Price)', fontsize=12, fontweight='bold', color='white')
-    ax1.set_title('Panel A: Comparative Climate Damages Across Commodities', 
-                  fontsize=14, fontweight='bold', pad=15, loc='left', color='white')
-
-    for i, (val, item) in enumerate(zip(damages_sorted, items_sorted)):
-        label = f' {val}%'
-        ax1.text(val + 1, i, label, va='center', fontsize=11, fontweight='bold', color='white')
-
-    ax1.axvline(x=35, color='#e67e22', linestyle='--', linewidth=1.5, alpha=0.6)
-    ax1.text(35, len(items_sorted) - 0.5, 'Bitcoin avg', fontsize=9, 
-             color='#e67e22', ha='center', fontweight='bold')
-
-    ax1.spines['top'].set_visible(False)
-    ax1.spines['right'].set_visible(False)
-    ax1.spines['left'].set_visible(False)
-    ax1.grid(axis='x', alpha=0.2, linestyle='--', color='#555555')
-    ax1.set_xlim(0, 105)
-
-    # --- PANEL B: TEMPORAL ANALYSIS ---
-    ax2 = fig.add_subplot(gs[0, 1])
-    years = bitcoin_temporal['years']
-    btc_damages = bitcoin_temporal['damages']
-
-    ax2.plot(years, btc_damages, color='#e67e22', marker='o', 
-             markersize=10, linewidth=3, markeredgecolor='white', 
-             markeredgewidth=2, label='Bitcoin', zorder=3)
-
-    ax2.fill_between(years, btc_damages, alpha=0.25, color='#e67e22')
-
-    avg_damage = np.mean(btc_damages)
-    ax2.axhline(y=avg_damage, color='#95a5a6', linestyle='--', 
-                linewidth=2, alpha=0.7, label=f'Mean: {avg_damage:.0f}%')
-    ax2.axhline(y=4, color='#f1c40f', linestyle='-', 
-                linewidth=2, alpha=0.7, label='Gold: 4%')
-
-    peak_year = years[np.argmax(btc_damages)]
-    peak_value = max(btc_damages)
-    ax2.annotate(f'Peak: {peak_value}%\n({peak_year})', 
-                 xy=(peak_year, peak_value), xytext=(peak_year - 1.5, peak_value + 8),
-                 arrowprops=dict(arrowstyle='->', color='#c0392b', lw=2),
-                 fontsize=10, fontweight='bold', color='#c0392b',
-                 bbox=dict(boxstyle='round,pad=0.4', fc='black', ec='#c0392b', lw=1.5))
-
-    ax2.set_xlabel('Year', fontsize=12, fontweight='bold', color='white')
-    ax2.set_ylabel('Climate Damages (%)', fontsize=12, fontweight='bold', color='white')
-    ax2.set_title('Panel B: Bitcoin Damages Over Time (2016-2021)', 
-                  fontsize=14, fontweight='bold', pad=15, loc='left', color='white')
-    ax2.set_ylim(0, 95)
-    ax2.set_xticks(years)
-    ax2.legend(loc='upper left', fontsize=10, frameon=True, shadow=False)
-    ax2.spines['top'].set_visible(False)
-    ax2.spines['right'].set_visible(False)
-    ax2.grid(axis='y', alpha=0.3, linestyle='--', color='#555555')
-
-    # --- PANEL C: CATEGORY SUMMARY ---
-    ax3 = fig.add_subplot(gs[1, :])
-
-    categories = {}
-    for item, data in commodities_data.items():
-        cat = data['category']
-        if cat not in categories:
-            categories[cat] = []
-        categories[cat].append(data['damage'])
-
-    cat_names = list(categories.keys())
-    cat_avgs = [np.mean(categories[cat]) for cat in cat_names]
-    cat_colors = ['#34495e', '#f39c12', '#8e44ad', '#f1c40f', '#27ae60']
-
-    x_pos = np.arange(len(cat_names))
-    ax3.bar(x_pos, cat_avgs, color=cat_colors, edgecolor='black', 
-            linewidth=2, alpha=0.9, width=0.6)
-
-    cat_labels = ['Fossil Fuels', 'Cryptocurrency', 'Agriculture', 'Precious Metals', 'Renewable Energy']
-    ax3.set_xticks(x_pos)
-    ax3.set_xticklabels(cat_labels, fontsize=11, fontweight='bold', color='white')
-    ax3.set_ylabel('Average Climate Damages (%)', fontsize=11, fontweight='bold', color='white')
-    ax3.set_title('Panel C: Average Damages by Category', 
-                  fontsize=14, fontweight='bold', pad=15, loc='left', color='white')
-
-    for i, val in enumerate(cat_avgs):
-        ax3.text(i, val + 2, f'{val:.1f}%', ha='center', fontsize=11, fontweight='bold', color='white')
-
-    ax3.spines['top'].set_visible(False)
-    ax3.spines['right'].set_visible(False)
-    ax3.set_ylim(0, max(cat_avgs) * 1.2)
-    ax3.grid(axis='y', alpha=0.2, linestyle='--', color='#555555')
-
-    # --- FOOTER ---
-    fig.text(0.5, 0.01, 
-             'Data Source: Jones, B.A., Goodkind, A.L., & Berrens, R.P. (2022). '
-             'Economic estimation of Bitcoin mining\'s climate damages. Scientific Reports, 12, 14512.',
-             ha='center', fontsize=9, style='italic', color='#bbbbbb',
-             bbox=dict(facecolor='#1c1c1c', alpha=0.8, edgecolor='#555555', 
-                       boxstyle='round,pad=0.8', linewidth=1))
-
-    plt.savefig('figure_19_jones_climate_damages.png', dpi=300, bbox_inches='tight', 
-                facecolor='black', edgecolor='none')
-    print("✓ Visualization saved as 'figure_19_jones_climate_damages.png'")
-    plt.show()
-
-
-def generate_oceanic_games_model():
-    """
-    Reproduces Figure 20: Economic incentive for mining centralization from an
-    Oceanic Games model, adapted to a non-linear representation.
-    """
-    print("\nGenerating Figure 20: Economic Incentive for Mining Centralization...")
-
-    def get_coalition_value_per_unit_nonlinear(r):
-        a = 0.00015; b = 0.01; c = 1.0
-        return a * r**2 + b * r + c
-
-    def get_oceanic_value_per_unit_nonlinear(r):
-        a = -0.00015; b = -0.005; c = 1.0
-        return a * r**2 + b * r + c
-
-    r_crystallized = np.linspace(0, 40, 400)
-    v1_values = get_coalition_value_per_unit_nonlinear(r_crystallized)
-    voc_values = get_oceanic_value_per_unit_nonlinear(r_crystallized)
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(r_crystallized, v1_values, color='#d62728', linewidth=2.5, label=r'$v_1$ (Value for Coalition Members)')
-    ax.plot(r_crystallized, voc_values, color='#1f77b4', linewidth=2.5, label=r'$v_{oc}$ (Value for Oceanic Miners)')
-
-    ax.set_xlabel('Percentage of Total Hash Rate in New Coalition ($r_1$)', fontsize=12)
-    ax.set_ylabel('Strategic Value Per Unit of Hash Rate', fontsize=12)
-    ax.set_title('Economic Incentive for Mining Centralization (Figure 20)', fontsize=14, weight='bold')
-    ax.set_xlim(0, 40); ax.set_ylim(0.5, 1.7)
-    legend = ax.legend(fontsize=11, title="Value per Unit of Resource")
-    legend.get_title().set_fontweight('bold')
-    ax.tick_params(axis='both', which='major', labelsize=10)
-
-    plt.tight_layout()
-    plt.savefig('figure_20_centralization_incentive.png', dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor())
-    plt.show()
-
-def generate_security_budget_dilemma_chart():
-    """
-    Reproduces Figure 22: A model of the Bitcoin Security Budget Dilemma.
-    """
-    print("\nGenerating Figure 22: Bitcoin Security Budget Dilemma...")
-
-    fig, ax = plt.subplots(figsize=(12, 8))
-    color_blue = '#56B4E9'; color_red = '#D55E00'
-
-    x_events = {"Present": 0, "2028 Halving": 1.5, "2032 Halving": 3.0, "...Post-Subsidy Era": 4.5}
-    x_ticks = list(x_events.values()); x_labels = list(x_events.keys())
+def fig14_security_budget_dilemma():
+    print("\nGenerating Figure 14: Security Budget Dilemma (theoretical model)...")
+    fig, ax = plt.subplots(figsize=(11, 7.5))
+    x_events = {"Present": 0, "2028 Halving": 1.5, "2032 Halving": 3.0, "Post-Subsidy Era": 4.5}
     y_levels = {"Vulnerable": 0, "Low": 1, "Medium": 2, "High": 3}
-    y_ticks = list(y_levels.values()); y_labels = list(y_levels.keys())
-
-    x_subsidy = [0, 1.5, 1.5, 3.0, 3.0, 4.5, 4.5, 5.5]
-    y_subsidy = [3, 3,   2,   2,   1,   1,   0.4, 0.2]
-    x_l1_retention = [0, 1.5, 1.5, 5.5]
-    y_l1_retention = [3, 3,   2.8, 2.5]
-
-    ax.plot(x_subsidy, y_subsidy, linestyle='--', color=color_blue, lw=2.5, label='Scenario A: High L2 Adoption')
-    ax.plot(x_l1_retention, y_l1_retention, linestyle='-', color=color_red, lw=2.5, label='Scenario B: L1 Retention')
-
-    ax.set_xlabel("Time", fontsize=14, labelpad=10); ax.set_ylabel("Security Budget", fontsize=14, labelpad=10)
-    ax.set_xticks(x_ticks); ax.set_xticklabels(x_labels, fontsize=12)
-    ax.set_yticks(y_ticks); ax.set_yticklabels(y_labels, fontsize=12)
-    ax.set_xlim(-0.2, 5.7); ax.set_ylim(-0.2, 3.5)
-    ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
-
-    ax.annotate('Requires Prohibitively High\nTransaction Fees', xy=(2.25, 2.75), xytext=(2.5, 3.1),
-                fontsize=11, color=color_red, ha='left', arrowprops=dict(facecolor=color_red, shrink=0.05, width=1, headwidth=6, edgecolor='none'))
-    ax.annotate('Transaction Fees', xy=(4.0, 2.55), xytext=(4.0, 1.5), fontsize=11, ha='center', va='center',
-                arrowprops=dict(arrowstyle='<->', lw=1.5, color='white', shrinkA=5, shrinkB=5))
-
-    blue_patch = mpatches.Patch(color=color_blue, label='Scenario A: High L2 Adoption')
-    red_patch = mpatches.Patch(color=color_red, label='Scenario B: L1 Retention')
-    ax.legend(handles=[blue_patch, red_patch], loc='upper right', fontsize=12, frameon=True)
-    ax.set_title("A Model of the Bitcoin Security Budget Dilemma (Figure 22)", fontsize=16, pad=20, weight='bold')
-
+    x_subsidy = [0,1.5,1.5,3.0,3.0,4.5,4.5,5.5]; y_subsidy = [3,3,2,2,1,1,0.4,0.2]
+    x_l1 = [0,1.5,1.5,5.5]; y_l1 = [3,3,2.8,2.5]
+    ax.plot(x_subsidy, y_subsidy, '--', color=CB["blue"], lw=2.3, label='Scenario A: High L2 Adoption')
+    ax.plot(x_l1, y_l1, '-', color=CB["vermillion"], lw=2.3, label='Scenario B: L1 Fee Retention')
+    ax.set_xticks(list(x_events.values())); ax.set_xticklabels(list(x_events.keys()))
+    ax.set_yticks(list(y_levels.values())); ax.set_yticklabels(list(y_levels.keys()))
+    ax.set_xlabel("Time"); ax.set_ylabel("Security Budget")
+    ax.set_title("A Model of the Bitcoin Security-Budget Dilemma (Fig. 14)\nTHEORETICAL MODEL", fontsize=12)
+    ax.legend(loc='upper right')
     plt.tight_layout()
-    plt.savefig('figure_22_security_budget_dilemma.png', dpi=300)
-    plt.show()
+    save_fig(fig, "figure_14_security_budget_dilemma")
+    plt.close(fig)
 
-def generate_entity_distribution_chart():
+
+def fig15_governance_paralysis():
+    print("\nGenerating Figure 15: Governance Models, Managed vs. Consensus (conceptual)...")
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.8))
+    for ax, title, color, bullets in [
+        (ax1, 'Managed Monetary System', CB["blue"],
+         ['Discretionary policy tools', 'Central decision authority',
+          'Can respond to crises quickly', 'Adaptive to new information']),
+        (ax2, "Bitcoin's Consensus Model", CB["vermillion"],
+         ['Requires broad decentralized agreement', 'No central decision authority',
+          'Prone to paralysis on contentious changes', 'Example: 2015-2017 "Blocksize Wars" split']),
+    ]:
+        ax.set_xlim(0, 10); ax.set_ylim(0.5, 8.5); ax.axis('off')
+        ax.add_patch(mpatches.FancyBboxPatch((0.5, 6), 9, 2, boxstyle="round,pad=0.1",
+                     facecolor=color, alpha=0.85, edgecolor='black'))
+        ax.text(5, 7, title, ha='center', va='center', fontsize=12.5, weight='bold', color='white')
+        for i, b in enumerate(bullets):
+            ax.text(1, 4.9 - i*1.15, f'\u2022 {b}', fontsize=10, va='center')
+    fig.suptitle('Governance Models: Managed vs. Consensus-Based (Fig. 15)\nCONCEPTUAL DIAGRAM', fontsize=13)
+    footnote(fig, "Conceptual comparison diagram; not derived from data.")
+    plt.tight_layout(rect=[0, 0.05, 1, 0.85])
+    save_fig(fig, "figure_15_governance_paralysis")
+    plt.close(fig)
+
+
+def fig16_wash_trading_updated():
     """
-    Reproduces Figure 25: Distribution of Identifiable Entity Types.
-    Based on data from Schnoering & Vazirgiannis (2025).
-    Adapted to the script's dark theme.
+    [UPDATED IN v5] v4 showed only Bitwise (2019)'s 95% estimate. v5 adds
+    Cong et al. (2022, NBER)'s more rigorous, more recent re-estimate and
+    Sila et al. (2025), and the caption explicitly flags what none of these
+    numbers describe: the now-larger regulated-venue (ETF/CME/MiCA) share of
+    the market that has emerged since January 2024.
     """
-    print("\nGenerating Figure 25: Entity Distribution Analysis (Schnoering & Vazirgiannis)...")
+    print("\nGenerating Figure 16: Wash-Trading Estimates, Updated Across Three Independent Studies...")
+    studies = ['Bitwise (2019)\nSEC presentation', 'Cong et al. (2022)\nNBER, Benford/clustering tests',
+               'Sila et al. (2025)\nvolatility-conditional estimate']
+    low = [95, 70.85, 55]
+    high = [95, 77.50, 85]
+    mid = [(l+h)/2 for l, h in zip(low, high)]
+    err = [(h-l)/2 for l, h in zip(low, high)]
 
-    # --- 1. Data Extraction ---
-    data = {
-        'Entity': [
-            'Individual', 'Bet', 'Gambling', 'Exchange', 'Mining', 
-            'Ponzi', 'Ransomware', 'Faucet', 'Marketplace', 'Mixer', 'Bridge'
-        ],
-        'Count': [
-            23236, 6723, 1410, 794, 724, 
-            587, 234, 125, 115, 80, 70
-        ]
-    }
-    df = pd.DataFrame(data)
-
-    # Calculate Percentage
-    total_nodes = df['Count'].sum()
-    df['Percentage'] = (df['Count'] / total_nodes) * 100
-
-    # --- 2. Categorization ---
-    def categorize(entity):
-        if entity in ['Bet', 'Gambling', 'Ponzi']:
-            return 'Speculation & Gambling'
-        elif entity in ['Exchange', 'Bridge']:
-            return 'Financial Infrastructure'
-        elif entity == 'Individual':
-            return 'Individual / Unclassified'
-        elif entity == 'Marketplace':
-            return 'Commercial (Medium of Exchange)'
-        elif entity in ['Ransomware', 'Mixer']:
-            return 'Illicit / Obfuscation'
-        else:
-            return 'Network Operations (Mining/Faucet)'
-
-    df['Category'] = df['Entity'].apply(categorize)
-    df = df.sort_values('Count', ascending=True)
-
-    # --- 3. Visualization (Dark Theme Adapted) ---
-    fig, ax = plt.subplots(figsize=(12, 7))
-
-    # Define colors to highlight the contrast (Adapted for Dark Mode)
-    palette = {
-        'Individual / Unclassified': '#95a5a6',       # Silver/Gray (Noise)
-        'Speculation & Gambling': '#e74c3c',          # Bright Red
-        'Financial Infrastructure': '#3498db',        # Bright Blue
-        'Illicit / Obfuscation': '#9b59b6',           # Purple
-        'Network Operations (Mining/Faucet)': '#7f8c8d', # Slate Gray
-        'Commercial (Medium of Exchange)': '#2ecc71'  # Bright Green
-    }
-
-    # Create horizontal bar chart
-    bars = ax.barh(df['Entity'], df['Count'], color=[palette[c] for c in df['Category']])
-
-    # --- 4. Annotations & Styling ---
-    for i, (count, pct) in enumerate(zip(df['Count'], df['Percentage'])):
-        label_text = f"{count:,.0f} ({pct:.1f}%)"
-        # Text color white for visibility on black background
-        ax.text(count + 500, i, label_text, va='center', fontsize=10, fontweight='bold', color='white')
-
-    ax.set_title('Distribution of Identifiable Entity Types on the Bitcoin Network (2025)\nData Adapted from Schnoering & Vazirgiannis', 
-                 fontsize=14, fontweight='bold', pad=20, color='white')
-    ax.set_xlabel('Number of Identified Nodes (Linear Scale)', fontsize=10, color='white')
-
-    # Legend
-    custom_lines = [Line2D([0], [0], color=palette[k], lw=6) for k in palette.keys()]
-    ax.legend(custom_lines, palette.keys(), title="Functional Category", loc='lower right', frameon=True)
-
-    # Grid and Spines
-    ax.grid(axis='x', linestyle='--', alpha=0.3, color='#555555')
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_visible(False)
-
-    # Highlight specific data point: Marketplace
-    try:
-        mp_loc = list(df['Entity']).index('Marketplace')
-        ax.annotate('Commercial Use\n(0.3%)', 
-                    xy=(115, mp_loc), 
-                    xytext=(4000, mp_loc - 1),
-                    arrowprops=dict(facecolor='#2ecc71', shrink=0.05, width=1, headwidth=8, edgecolor='none'),
-                    fontsize=11, fontweight='bold', color='#2ecc71')
-    except ValueError:
-        pass # 'Marketplace' not found in index (unlikely given hardcoded data)
-
+    fig, ax = plt.subplots(figsize=(9, 6))
+    bars = ax.bar(studies, mid, yerr=err, capsize=6,
+                   color=[CB["vermillion"], CB["orange"], CB["purple"]])
+    ax.set_ylabel('Estimated Wash-Trading Share of Reported\nVolume on UNREGULATED Exchanges (%)')
+    ax.set_title('Wash-Trading Estimates on Unregulated Exchanges,\nThree Independent Studies (Fig. 16)')
+    ax.set_ylim(0, 105)
+    for b, l, h in zip(bars, low, high):
+        label = f'{l:g}%' if l == h else f'{l:g}-{h:g}%'
+        ax.text(b.get_x() + b.get_width()/2, h + 2, label, ha='center', fontsize=10, weight='bold')
+    footnote(fig, "All three estimates describe UNREGULATED exchanges only. Since Jan. 2024, "
+                   "U.S. spot Bitcoin ETF approval and MiCA implementation have shifted a "
+                   "substantial share of institutional PRICE-FORMATION volume onto regulated venues "
+                   "(CME futures, NYDFS/CFTC/SEC-supervised spot exchanges) not characterized by any "
+                   "of these three studies; none of the bars above should be read as describing the "
+                   "market's regulated tier.")
     plt.tight_layout()
-    output_filename = 'figure_25_schnoering_entity_distribution.png'
-    plt.savefig(output_filename, dpi=300, bbox_inches='tight')
-    print(f"Chart saved to {output_filename}")
-    plt.show()
+    save_fig(fig, "figure_16_wash_trading_updated")
+    plt.close(fig)
 
 
-def generate_wash_trading_chart():
-    """
-    Reproduces Figure 27: Percentage of Failed Forensic Tests for Wash Trading.
-    """
-    print("\nGenerating Figure 27: Wash Trading Forensic Failure Rates...")
-
-    exchange_data = {
-        'Exchange': ['U8; U14', 'U9', 'U2; U5', 'U10', 'U1; U4; U7; U12', 'UT4; UT6', 'U3', 'U11; U16', 'UT10', 'U6; U15', 
-                     'UT7', 'UT3; UT8', 'UT1; UT2; UT5', 'U13', 'UT9', 'R1; R2; R3'],
-        'Failure_Rate': [98, 95, 88, 75, 70, 67, 58, 42, 42, 34, 22, 17, 8, 3, 2, 0],
-        'Category': ['High Risk', 'High Risk', 'High Risk', 'High Risk', 'High Risk', 'Medium Risk', 'High Risk', 'High Risk', 'Medium Risk', 'High Risk',
-                     'Medium Risk', 'Medium Risk', 'Medium Risk', 'High Risk', 'Medium Risk', 'Regulated']
-    }
-    crypto_data = {'Crypto': ['XRP', 'LTC', 'BTC', 'ETH'], 'Failure_Rate': [54, 47, 48, 42]}
-    df_exch = pd.DataFrame(exchange_data); df_crypto = pd.DataFrame(crypto_data)
-
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 12), gridspec_kw={'height_ratios': [2, 1]})
-    plt.subplots_adjust(hspace=0.3) 
-
-    colors = []
-    for cat in df_exch['Category']:
-        if cat == 'High Risk': colors.append('#d62728') 
-        elif cat == 'Medium Risk': colors.append('#1f77b4') 
-        else: colors.append('#2ca02c') 
-
-    y_pos = np.arange(len(df_exch))
-    bars1 = ax1.barh(y_pos, df_exch['Failure_Rate'], color=colors, height=0.6)
-    ax1.set_yticks(y_pos); ax1.set_yticklabels(df_exch['Exchange'], fontsize=10); ax1.invert_yaxis() 
-    ax1.set_xlabel('Percentage of Failed Tests (%)', fontsize=11, fontweight='bold')
-    ax1.set_title('Percentage of Failed Forensic Tests by Exchange (Figure 27)', fontsize=13, fontweight='bold', pad=15)
-    ax1.set_xlim(0, 100); ax1.grid(axis='x', linestyle='--', alpha=0.5) 
-    for i, v in enumerate(df_exch['Failure_Rate']): ax1.text(v + 1, i + 0.15, str(v) + '%', color='white', fontsize=9)
-
-    df_crypto = df_crypto.sort_values('Failure_Rate', ascending=True)
-    y_pos_crypto = np.arange(len(df_crypto))
-    crypto_colors = ['#00688b', '#c0c0c0', '#f2a900', '#00688b'] 
-    bars2 = ax2.barh(y_pos_crypto, df_crypto['Failure_Rate'], color=crypto_colors, height=0.6)
-    ax2.set_yticks(y_pos_crypto); ax2.set_yticklabels(df_crypto['Crypto'], fontsize=11)
-    ax2.set_xlabel('Percentage of Failed Tests (%)', fontsize=11, fontweight='bold')
-    ax2.set_title('Percentage of Failed Forensic Tests by Cryptocurrency', fontsize=13, fontweight='bold', pad=15)
-    ax2.set_xlim(0, 100); ax2.grid(axis='x', linestyle='--', alpha=0.5)
-    for i, v in enumerate(df_crypto['Failure_Rate']): ax2.text(v + 1, i + 0.1, str(v) + '%', color='white', fontsize=10)
-
+def fig17_tether_dominance():
+    print("\nGenerating Figure 17: Tether Dominance of Stablecoin Market Cap (2025-2026 range)...")
+    labels = ['Tether (USDT)', 'All Other Stablecoins']
+    low, high = 58.3, 63.0
+    vals = [(low + high) / 2, 100 - (low + high) / 2]
+    fig, ax = plt.subplots(figsize=(7, 5.5))
+    bars = ax.bar(labels, vals, color=[CB["vermillion"], CB["grey"]])
+    ax.set_ylabel('Share of Total Stablecoin Market Capitalization (%)')
+    ax.set_title(f'Tether (USDT) Share of Stablecoin Market Cap (Fig. 17)\n(range {low:g}-{high:g}%, late 2025-2026)')
+    ax.set_ylim(0, 70)
+    ax.text(0, vals[0] + 1.5, f'~{low:g}-{high:g}%', ha='center', fontsize=11, weight='bold')
+    footnote(fig, "Shown as a range across independent trackers (CoinMarketCap, DeFiLlama-based "
+                   "aggregators) rather than a single archived figure, since USDT's exact share "
+                   "moves within this band across late 2025 and 2026. The U.S. GENIUS Act (enacted "
+                   "July 2025) establishes forward-looking federal reserve/redemption standards for "
+                   "payment stablecoin issuers but does not retroactively resolve concentration risk "
+                   "in Tether's existing market share.")
     plt.tight_layout()
-    plt.savefig('figure_27_wash_trading.png', dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor())
-    plt.show()
+    save_fig(fig, "figure_17_tether_dominance")
+    plt.close(fig)
 
-def generate_tether_issuance_chart():
-    """
-    Reproduces Figure 28: Bitcoin Returns Conditional on Tether Issuance.
-    """
-    print("\nGenerating Figure 28: Tether Issuance Impact...")
-    categories = ['Zero', 'Low', 'Medium', 'High']
-    raw_returns = [0.6, -0.5, -1.8, -4.2] 
-    benchmarked_returns = [0.05, -1.9, -3.1, -6.1]
 
-    x = np.arange(len(categories)); width = 0.35 
+def fig18_elsalvador_impact():
+    """
+    [NEW IN v5] Reproduces Charfi (2024)'s published difference-in-differences
+    point estimates for the macroeconomic impact of Bitcoin legal-tender
+    adoption in El Salvador. This entire section (paper Sec. 10) was absent
+    from v4 despite being the paper's single strongest available natural
+    experiment.
+    """
+    print("\nGenerating Figure 18: El Salvador DiD Macroeconomic Impact (reproduced, cited)...")
+    variables = ['GDP\nGrowth', 'Employment\nRate', 'Investment\nRate', 'Inflation\nRate',
+                 'Remittance\nInflows', 'Bond\nYield']
+    impacts = [0.78, -0.47, -0.65, 4.15, 1.81, 0.48]
+    colors = [CB["green"] if v >= 0 and i not in (3, 5) else (CB["vermillion"] if v < 0 else CB["orange"])
+              for i, v in enumerate(impacts)]
+
     fig, ax = plt.subplots(figsize=(10, 6))
-    rects1 = ax.bar(x - width/2, raw_returns, width, label='Raw EOM Returns', color='#1f77b4')
-    rects2 = ax.bar(x + width/2, benchmarked_returns, width, label='Benchmarked Returns', color='#d62728')
+    bars = ax.bar(variables, impacts, color=colors)
+    ax.axhline(0, color='black', lw=1)
+    ax.set_ylim(-1, 5)  # Forces the y-axis to render negative ticks
+    ax.set_ylabel('Estimated Impact (percentage points, DiD coefficient)')
 
-    ax.set_ylabel('Return (%)', fontsize=12)
-    ax.set_xlabel('Monthly Tether Issuance Quantile', fontsize=12)
-    ax.set_title('Bitcoin End-of-Month Returns Conditional on Tether Issuance (Figure 28)', fontsize=14, fontweight='bold', pad=20)
-    ax.set_xticks(x); ax.set_xticklabels(categories, fontsize=11)
-    ax.axhline(0, color='white', linewidth=0.8); ax.legend()
-    ax.yaxis.grid(True, linestyle='--', alpha=0.5); ax.set_axisbelow(True)
-
-    def autolabel(rects):
-        for rect in rects:
-            height = rect.get_height()
-            xy_pos = (rect.get_x() + rect.get_width() / 2, height)
-            xy_text = (0, 5) if height >= 0 else (0, -15)
-            if abs(height) > 0.1:
-                ax.annotate(f'{height}%', xy=xy_pos, xytext=xy_text, textcoords="offset points",
-                            ha='center', va='bottom', fontsize=10, fontweight='bold', color='white')
-    autolabel(rects1); autolabel(rects2)
-
+    ax.set_title('Macroeconomic Impact of Bitcoin Legal-Tender Adoption\nin El Salvador (Fig. 18)')
+    for b, v in zip(bars, impacts):
+        ax.text(b.get_x() + b.get_width()/2, v + (0.15 if v >= 0 else -0.35), f'{v:+.2f}pp',
+                 ha='center', fontsize=9, weight='bold')
+    footnote(fig, "REPRODUCED FROM CITED SOURCE: Charfi (2024), difference-in-differences "
+                   "estimates comparing El Salvador against a control group of neighboring "
+                   "countries after Bitcoin's 2021 legal-tender adoption. Higher inflation and "
+                   "bond yields plus lower employment and investment accompanied the policy; "
+                   "remittance inflows rose modestly despite the policy's stated goal of a much "
+                   "larger remittance-cost reduction.")
     plt.tight_layout()
-    plt.savefig('figure_28_tether_issuance.png', dpi=300, bbox_inches='tight')
-    plt.show()
+    save_fig(fig, "figure_18_elsalvador_impact")
+    plt.close(fig)
+
+    df = pd.DataFrame({"Variable": variables, "DiD_Impact_pp": impacts})
+    export_table(df, "table_el_salvador",
+                 caption="Macroeconomic impact of Bitcoin adoption in El Salvador (Charfi, 2024).",
+                 label="tab:elsalvador")
 
 
-# --- 4. MAIN MENU AND SCRIPT EXECUTION ---
+def fig19_basel_capital_requirement():
+    print("\nGenerating Figure 19: Basel III Capital Requirement (deterministic, cited inputs)...")
+    min_ratio = 0.08
+    categories = {'Unbacked Crypto\n(BTC), RW=1250%\n(Group 2b, eff. Jan 2026)': 1250,
+                  'Typical Unrated\nCorporate, RW=100%': 100}
+    capital_pct = {k: (v / 100) * min_ratio * 100 for k, v in categories.items()}
+    fig, ax = plt.subplots(figsize=(8.5, 5.5))
 
-def main_menu(full_data, volatility_data, data_loaded):
-    """Displays the main menu and handles user choices for figure generation."""
+    bars = ax.bar(list(capital_pct.keys()), list(capital_pct.values()),
+                   color=[CB["vermillion"], CB["blue"]])
+    ax.set_ylabel('Required Capital per $100 of Exposure ($)')
+    ax.set_title('Basel III Capital Requirement by Exposure Class (Fig. 19)')
+    for b in bars:
+        ax.text(b.get_x() + b.get_width()/2, b.get_height(), f'${b.get_height():.0f}',
+                 ha='center', va='bottom', fontsize=11, weight='bold')
+    footnote(fig, "Deterministic calculation: capital = risk_weight x 8% minimum total capital "
+                   "ratio. The 1250% Group 2b risk weight for unbacked crypto-assets is confirmed, "
+                   "current, and binding as of January 1, 2026 (BCBS, 2022; Basel SCO60 standard).")
+    plt.tight_layout()
+    save_fig(fig, "figure_19_basel_capital_requirement")
+    plt.close(fig)
 
-    menu_options = {
-        '1': ('Figure 2: Comparative Rolling Volatility', generate_volatility_comparison_chart, 'full'),
-        '2': ('Figures 3 & 4: VaR and GARCH Analysis', analyze_risk_and_garch, 'volatility'),
-        '3': ('Figure 5: Supply/Demand Model (Fixed vs. Elastic)', generate_supply_volatility_model_figure_dark, None),
-        '4': ('Figure 6: TPS Capacity Comparison', generate_tps_chart, None),
-        '5': ('Figure 9: LN Centralization Parameter Map', generate_centralization_parameter_map, None),
-        '6': ('Figure 10: LN Topology (Network Simulation)', generate_topology_figure, None),
-        '7': ('Figure 11: LN Centralization (Gini Quantitative)', generate_gini_figure, None),
-        '8': ('Figure 16: Systemic Shock Analysis', generate_systemic_shock_chart, None),
-        '9': ('Figures 17 & 18: Drawdown and Correlation Analysis', analyze_digital_gold_narrative, 'full'),
-        '10': ('Figure 19: Climate Damages Analysis (Jones et al.)', generate_climate_damages_jones_chart, None),
-        '11': ('Figure 20: Economic Incentive for Mining Centralization', generate_oceanic_games_model, None),
-        '12': ('Figure 22: Bitcoin Security Budget Dilemma', generate_security_budget_dilemma_chart, None),
-        '13': ('Figure 27: Wash Trading Forensic Failure Rates', generate_wash_trading_chart, None),
-        '14': ('Figure 28: Tether Issuance Impact', generate_tether_issuance_chart, None),
-        '15': ('Figure 25: Entity Distribution Analysis (Schnoering & Vazirgiannis)', generate_entity_distribution_chart, None),
-        '16': ('Run All Figures', 'run_all', None),
-        '0': ('Exit', 'exit', None),
+
+def fig_stationarity_report(data):
+    print("\nGenerating stationarity report (ADF tests on prices and returns)...")
+    rows = []
+    for name in ['Bitcoin', 'US Dollar', 'Gold', 'S&P 500']:
+        ticker = TICKERS[name]
+        if ticker not in data.columns:
+            continue
+        price = data[ticker].dropna()
+        ret = np.log(price / price.shift(1)).dropna()
+        rows.append(adf_test(price, f"{name} (level)"))
+        rows.append(adf_test(ret, f"{name} (log return)"))
+    df = pd.DataFrame(rows)
+    print(df.to_string(index=False))
+    export_table(df, "table_adf_stationarity",
+                 caption="Augmented Dickey-Fuller stationarity tests on price levels and log returns.",
+                 label="tab:adf")
+    return df
+
+
+# ==============================================================================
+# 8. MAIN MENU AND EXECUTION
+# ==============================================================================
+
+def main_menu(full_data, data_loaded):
+    menu = {
+        '1':  ('Fig 1: Hierarchy of money (conceptual)', fig01_hierarchy_of_money, None),
+        '2':  ('Fig 2: Volatility comparison', fig02_volatility_comparison, 'full'),
+        '3':  ('Figs 3-4: VaR/ES suite + backtests + GARCH race', fig03_04_risk_suite, 'full'),
+        '4':  ('Fig 5: Settlement-layer throughput [v5: corrected Fedwire TPS]', fig05_settlement_layer_comparison, None),
+        '5':  ('Fig 6: LN reliability synthesis [v5: NEW, replaces stale-only figure]', fig06_ln_reliability_synthesis, None),
+        '6':  ('Fig 7: LN topology mesh vs. hub-and-spoke (schematic)', fig07_ln_topology_schematic, None),
+        '7':  ('Fig 8: MV=PY mismatch (illustrative identity)', fig08_mv_py_mismatch, None),
+        '8':  ('Fig 9: Debt burden [v5: + benign/malignant deflation panel]', fig09_debt_burden_deflation, None),
+        '9':  ('Figs 10-11: Drawdowns + DCC-GARCH [v5: + macro-liquidity control]', fig10_11_digital_gold_narrative, 'full'),
+        '10': ('Fig 12: 51% attack cost [v5: 2025 vs 2026 Harvey estimates]', fig12_attack_cost_breakdown, None),
+        '11': ('Fig 13: Mining pool concentration [v5: range + Stratum V2 note]', fig13_mining_pool_concentration, None),
+        '12': ('Fig 14: Security budget dilemma (theoretical)', fig14_security_budget_dilemma, None),
+        '13': ('Fig 15: Governance models (schematic)', fig15_governance_paralysis, None),
+        '14': ('Fig 16: Wash-trading [v5: 3 studies + institutional-era caveat]', fig16_wash_trading_updated, None),
+        '15': ('Fig 17: Tether dominance [v5: range + GENIUS Act note]', fig17_tether_dominance, None),
+        '16': ('Fig 18: El Salvador DiD impact [v5: NEW section]', fig18_elsalvador_impact, None),
+        '17': ('Fig 19: Basel III capital requirement (deterministic, cited)', fig19_basel_capital_requirement, None),
+        '18': ('Stationarity report (ADF, supplementary table)', fig_stationarity_report, 'full'),
+        '19': ('Run all', 'run_all', None),
+        '0':  ('Exit', 'exit', None),
     }
 
-    def run_all_figures():
-        """Helper function to execute all figure generations sequentially."""
-        print("\n--- RUNNING ALL FIGURES ---")
-        sorted_keys = sorted(menu_options.keys(), key=lambda x: int(x))
-        for choice in sorted_keys:
-            if menu_options[choice][1] not in ['run_all', 'exit']:
-                execute_choice(choice)
-        print("\n--- ALL FIGURES GENERATED ---")
-
-    def execute_choice(choice):
-        """Executes the function corresponding to the user's choice."""
-        description, func, data_needed = menu_options[choice]
-
-        if data_needed and not data_loaded:
-            print(f"\nERROR: Cannot generate '{description}'. Market data failed to load.")
+    def execute(choice):
+        desc, func, needs = menu[choice]
+        if needs == 'full' and not data_loaded:
+            print(f"\n[ERROR] Cannot run '{desc}': market data unavailable.")
             return
+        func(full_data) if needs == 'full' else func()
 
-        if data_needed == 'full':
-            func(full_data)
-        elif data_needed == 'volatility':
-            if volatility_data.empty:
-                print("\nERROR: Volatility data slice is empty. Cannot generate VaR/GARCH plots.")
-            else:
-                func(volatility_data)
-        else: 
-            func()
+    def run_all():
+        print("\n--- RUNNING ALL FIGURES/TABLES ---")
+        for k in sorted(menu.keys(), key=int):
+            if menu[k][1] not in ('run_all', 'exit'):
+                try:
+                    execute(k)
+                except Exception as e:
+                    print(f"  [ERROR] {menu[k][0]} failed: {e}")
+        print("\n--- DONE ---")
 
     while True:
-        print("\n" + "="*50)
-        print("    REPRODUCIBLE ANALYSIS SCRIPT - MAIN MENU")
-        print("="*50)
-        sorted_keys = sorted(menu_options.keys(), key=lambda x: int(x))
-        for key in sorted_keys:
-            desc = menu_options[key][0]
-            print(f"  [{key}] {desc}")
-        print("-"*50)
-
+        print("\n" + "=" * 70)
+        print("   v5 ANALYSIS -- AUDIT-RESPONSIVE REVISION -- MAIN MENU")
+        print("=" * 70)
+        for k in sorted(menu.keys(), key=int):
+            print(f"  [{k}] {menu[k][0]}")
+        print("-" * 70)
         choice = input("Enter your choice: ").strip()
-
         if choice == '0':
-            print("Exiting program.")
             break
-        elif choice in menu_options:
-            if menu_options[choice][1] == 'run_all':
-                run_all_figures()
-            else:
-                execute_choice(choice)
+        elif choice in menu:
+            run_all() if menu[choice][1] == 'run_all' else execute(choice)
         else:
-            print("Invalid choice. Please try again.")
-        
-        if choice in menu_options and choice != '0':
-            input("\nPress Enter to return to the main menu...")
+            print("Invalid choice.")
+        if choice in menu and choice != '0':
+            input("\nPress Enter to continue...")
 
 
 if __name__ == '__main__':
-    effective_end_date = datetime.datetime.now().strftime('%Y-%m-%d')
-    print(f"Starting analysis for paper dated: {FINAL_ANALYSIS_DATE}")
+    print(f"Starting v5 analysis (audit-responsive revision, paper date: {FINAL_ANALYSIS_DATE})")
+    print(f"Dependency status: yfinance={HAS_YFINANCE}, arch={HAS_ARCH}")
+    if not HAS_YFINANCE or not HAS_ARCH:
+        missing = [p for p, ok in [("yfinance", HAS_YFINANCE), ("arch", HAS_ARCH)] if not ok]
+        print(f"  -> Missing: {', '.join(missing)}. Install with: pip install {' '.join(missing)}")
 
-    # --- Step 1: Load Data ---
+    effective_end_date = datetime.datetime.now().strftime('%Y-%m-%d')
     try:
-        full_data = get_data(start_date=FULL_START_DATE, end_date=effective_end_date, cache_filename=CACHE_FILENAME)
-        data_loaded = True
-        print("Market data loaded successfully.")
+        full_data = get_market_data(FULL_START_DATE, effective_end_date, CACHE_FILENAME)
+        data_loaded = not full_data.empty
     except (ConnectionError, ValueError) as e:
-        print(f"\nCRITICAL ERROR: Could not load data. {e}")
-        print("Data-driven visualizations will be unavailable.")
+        print(f"\n[CRITICAL] Could not load market data: {e}")
         full_data = pd.DataFrame()
         data_loaded = False
 
-    # --- Step 2: Prepare Data Slices ---
-    volatility_data = pd.DataFrame()
-    if data_loaded and not full_data.empty:
-        if pd.to_datetime(START_DATE_VOLATILITY) <= full_data.index.max():
-            volatility_data = full_data.loc[START_DATE_VOLATILITY:]
-        else:
-            print("\nWARNING: Not enough data to create volatility slice. VaR/GARCH plots will be unavailable.")
-
-    # --- Step 3: Launch Main Menu ---
-    main_menu(full_data, volatility_data, data_loaded)
+    main_menu(full_data, data_loaded)
