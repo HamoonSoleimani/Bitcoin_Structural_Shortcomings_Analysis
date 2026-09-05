@@ -19,6 +19,7 @@ Key empirical analyses include:
 
 ## Repository Structure
 
+*   `document.tex`: The full LaTeX source code for the academic paper.
 *   `analysis_script.py`: The reproducible Python script used to fetch current market data, execute all statistical tests, and generate the 19 figures and data tables found in the paper.
 *   `/paper_outputs/`: Directory generated automatically by the Python script containing all exported `.pdf` / `.png` figures and `.csv` / `.tex` tables.
 
@@ -32,3 +33,21 @@ Ensure you have Python 3 installed. Install the required dependencies:
 
 ```bash
 pip install yfinance arch numpy pandas matplotlib scipy statsmodels
+```
+
+### Running the Script
+
+Execute the script via the command line:
+
+```bash
+python analysis_script.py
+```
+
+Upon execution, the script will:
+1. Attempt to load cached historical data or fetch fresh data via `yfinance`.
+2. Open an interactive CLI menu.
+3. Allow you to generate individual figures/tables by entering the corresponding number, or press **19** to run all analyses at once.
+4. Output all generated assets to the `paper_outputs/` directory.
+
+## License
+[MIT License](LICENSE) - Free for academic and personal use. Please cite the author if referencing the models or text.
