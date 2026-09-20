@@ -1,0 +1,24 @@
+\begin{table}
+\caption{Classification of every figure by evidentiary status, manuscript role, and data source.}
+\label{tab:figure_manifest}
+\begin{tabular}{llll}
+\toprule
+Figure & Type & Role & Data\_Source \\
+\midrule
+figure\_01\_reintermediation\_trilemma & conceptual & Main text -- Framework (§2) & None -- synthesis diagram, no data \\
+figure\_02\_settlement\_layer\_comparison & reproduced & Main text -- Pillar I (§3) & Fed 2024 PFMI disclosure; ECB TARGET Services Annual Report 2024; Mastercard/Visa 10-K (cited) \\
+figure\_03\_ln\_topology\_schematic & conceptual & Main text -- Pillar II (§4) & None -- fixed-node schematic, no data \\
+figure\_04\_ln\_reliability\_synthesis & reproduced & Main text -- Pillar II (§4) & Waugh \& Holz (2020); River Financial (2023) (cited) \\
+figure\_05\_security\_budget\_dilemma & theoretical-model & Main text -- Pillar III (§5) & Stylized scenario paths, no market data \\
+figure\_06\_mining\_pool\_concentration & reproduced & Main text -- Pillar III (§5) & Hashrate Index; B10C (2025); Spark (2026) (cited) \\
+figure\_A1\_rolling\_volatility & empirical & Appendix A & yfinance (BTC-USD, GC=F, AAPL), each on its native calendar \\
+figure\_A2\_var\_comparison & empirical & Appendix A & yfinance, each asset's own native calendar \\
+figure\_A3\_garch\_volatility & empirical & Appendix A & yfinance + arch-package GARCH-family fit (BIC-selected) \\
+figure\_A4\_drawdowns & empirical & Appendix A & yfinance (BTC-USD), native 365-day calendar \\
+figure\_A5\_correlation\_dcc & empirical & Appendix A & yfinance + arch-package DCC-GARCH(1,1) fit, raw and DXY/VIX-residualized \\
+figure\_B1\_wash\_trading\_updated & reproduced & Appendix B & Bitwise (2019); Cong et al. (2022); Sila et al. (2025) (cited) \\
+figure\_B2\_tether\_dominance & reproduced & Appendix B & CoinMarketCap (2025); CoinLaw (2026) (cited) \\
+figure\_C1\_attack\_cost\_breakdown & reproduced & Appendix C & Harvey (2025, 2026) (cited) \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -1,0 +1,2 @@
+Asset,Model,Distribution,Persistence,Persistence_Formula,Half_Life_Days
+Bitcoin,EGARCH,t,0.9851049339503772,beta (EGARCH log-variance AR coefficient),46.18791417831107

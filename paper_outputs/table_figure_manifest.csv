@@ -1,0 +1,15 @@
+Figure,Type,Role,Data_Source
+figure_01_reintermediation_trilemma,conceptual,Main text -- Framework (§2),"None -- synthesis diagram, no data"
+figure_02_settlement_layer_comparison,reproduced,Main text -- Pillar I (§3),Fed 2024 PFMI disclosure; ECB TARGET Services Annual Report 2024; Mastercard/Visa 10-K (cited)
+figure_03_ln_topology_schematic,conceptual,Main text -- Pillar II (§4),"None -- fixed-node schematic, no data"
+figure_04_ln_reliability_synthesis,reproduced,Main text -- Pillar II (§4),Waugh & Holz (2020); River Financial (2023) (cited)
+figure_05_security_budget_dilemma,theoretical-model,Main text -- Pillar III (§5),"Stylized scenario paths, no market data"
+figure_06_mining_pool_concentration,reproduced,Main text -- Pillar III (§5),Hashrate Index; B10C (2025); Spark (2026) (cited)
+figure_A1_rolling_volatility,empirical,Appendix A,"yfinance (BTC-USD, GC=F, AAPL), each on its native calendar"
+figure_A2_var_comparison,empirical,Appendix A,"yfinance, each asset's own native calendar"
+figure_A3_garch_volatility,empirical,Appendix A,yfinance + arch-package GARCH-family fit (BIC-selected)
+figure_A4_drawdowns,empirical,Appendix A,"yfinance (BTC-USD), native 365-day calendar"
+figure_A5_correlation_dcc,empirical,Appendix A,"yfinance + arch-package DCC-GARCH(1,1) fit, raw and DXY/VIX-residualized"
+figure_B1_wash_trading_updated,reproduced,Appendix B,Bitwise (2019); Cong et al. (2022); Sila et al. (2025) (cited)
+figure_B2_tether_dominance,reproduced,Appendix B,CoinMarketCap (2025); CoinLaw (2026) (cited)
+figure_C1_attack_cost_breakdown,reproduced,Appendix C,"Harvey (2025, 2026) (cited)"
